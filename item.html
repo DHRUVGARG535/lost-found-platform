@@ -107,6 +107,20 @@
                             <h5><i class="fas fa-user me-2"></i>Reported by</h5>
                             <p id="itemReporter" class="text-muted">Reporter details</p>
                         </div>
+
+                        <div class="contact-info">
+                            <h5><i class="fas fa-phone me-2"></i>Contact Information</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="mb-1"><strong>Name:</strong> <span id="contactName" class="contact-name">Contact name</span></p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="mb-1"><strong>Phone:</strong> <a href="tel:" id="contactPhoneLink" class="text-decoration-none">
+                                        <span id="contactPhone" class="contact-phone">Contact phone</span>
+                                    </a></p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -148,6 +162,84 @@
             <h4>Item Not Found</h4>
             <p class="text-muted">The item you're looking for doesn't exist or has been removed.</p>
             <a href="index.html" class="btn btn-primary">Back to Home</a>
+        </div>
+    </div>
+
+    <!-- Edit Item Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Item</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editForm">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editItemTitle" class="form-label">Item Title *</label>
+                                <input type="text" class="form-control" id="editItemTitle" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editItemStatus" class="form-label">Status *</label>
+                                <select class="form-select" id="editItemStatus" required>
+                                    <option value="">Select Status</option>
+                                    <option value="Lost">Lost</option>
+                                    <option value="Found">Found</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="editItemDescription" class="form-label">Description *</label>
+                            <textarea class="form-control" id="editItemDescription" rows="3" required></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editItemLocation" class="form-label">Location *</label>
+                                <input type="text" class="form-control" id="editItemLocation" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editItemDate" class="form-label">Date *</label>
+                                <input type="date" class="form-control" id="editItemDate" required>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editContactPhone" class="form-label">Contact Phone Number *</label>
+                                <input type="tel" class="form-control" id="editContactPhone" placeholder="+91 9876543210" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editContactName" class="form-label">Contact Name *</label>
+                                <input type="text" class="form-control" id="editContactName" placeholder="Your name" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="editItemImage" class="form-label">Item Image</label>
+                            <input type="file" class="form-control" id="editItemImage" accept="image/*">
+                            <div class="form-text">Upload a new image to replace the current one (optional)</div>
+                        </div>
+
+                        <!-- Image Preview -->
+                        <div class="mb-3" id="editImagePreview" style="display: none;">
+                            <label class="form-label">New Image Preview</label>
+                            <div class="text-center">
+                                <img id="editPreviewImg" class="img-thumbnail" style="max-width: 300px; max-height: 300px;">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveEditBtn">
+                        <span class="spinner-border spinner-border-sm me-2" id="editSpinner" style="display: none;"></span>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 

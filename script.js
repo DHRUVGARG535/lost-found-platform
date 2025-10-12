@@ -29,6 +29,7 @@ const auth = firebase.auth();
 let currentUser = null;
 let items = [];
 let currentItemId = null;
+let currentItemData = null;
 
 // =============================================================================
 // AUTHENTICATION FUNCTIONS
@@ -412,7 +413,7 @@ function createItemCard(item) {
                         <h5 class="card-title">${item.title || 'Untitled Item'}</h5>
                         <p class="card-text text-muted small">${shortDescription}</p>
                         <div class="mt-auto">
-                            <div class="row text-muted small">
+                            <div class="row text-muted small mb-2">
                                 <div class="col-6">
                                     <i class="fas fa-map-marker-alt me-1"></i>
                                     ${item.location || 'Unknown location'}
@@ -420,6 +421,16 @@ function createItemCard(item) {
                                 <div class="col-6 text-end">
                                     <i class="fas fa-calendar me-1"></i>
                                     ${date}
+                                </div>
+                            </div>
+                            <div class="row text-muted small">
+                                <div class="col-6">
+                                    <i class="fas fa-user me-1"></i>
+                                    ${item.contactName || 'Unknown'}
+                                </div>
+                                <div class="col-6 text-end">
+                                    <i class="fas fa-phone me-1"></i>
+                                    ${item.contactPhone || 'No phone'}
                                 </div>
                             </div>
                         </div>
@@ -482,6 +493,11 @@ function displayItemDetails(item) {
     
     if (!itemDetails) return;
     
+    // Store current item data for editing
+    currentItemData = item;
+    currentItemId = item.id;
+    console.log('Item data stored for editing:', currentItemData);
+    
     // Update item information
     document.getElementById('itemTitle').textContent = item.title;
     document.getElementById('itemStatus').textContent = item.status;
@@ -489,6 +505,18 @@ function displayItemDetails(item) {
     document.getElementById('itemDate').textContent = formatDate(item.createdAt.toDate());
     document.getElementById('itemDescription').textContent = item.description;
     document.getElementById('itemReporter').textContent = item.userEmail || 'Unknown';
+    
+    // Update contact information
+    document.getElementById('contactName').textContent = item.contactName || 'Not provided';
+    document.getElementById('contactPhone').textContent = item.contactPhone || 'Not provided';
+    const contactPhoneLink = document.getElementById('contactPhoneLink');
+    if (item.contactPhone) {
+        contactPhoneLink.href = `tel:${item.contactPhone}`;
+        contactPhoneLink.classList.add('text-primary');
+    } else {
+        contactPhoneLink.href = '#';
+        contactPhoneLink.classList.remove('text-primary');
+    }
     
     // Update image
     const imageContainer = document.getElementById('itemImageContainer');
@@ -508,7 +536,6 @@ function displayItemDetails(item) {
     if (currentUser && item.userId === currentUser.uid) {
         if (actionButtons) {
             actionButtons.style.display = 'block';
-            currentItemId = item.id;
         }
     }
     
@@ -604,12 +631,20 @@ async function handleReportForm(event) {
             description: document.getElementById('itemDescription').value.trim(),
             location: document.getElementById('itemLocation').value.trim(),
             status: document.getElementById('itemStatus').value,
-            date: document.getElementById('itemDate').value
+            date: document.getElementById('itemDate').value,
+            contactPhone: document.getElementById('contactPhone').value.trim(),
+            contactName: document.getElementById('contactName').value.trim()
         };
         
         // Validate form data
-        if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date) {
+        if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
             throw new Error('Please fill in all required fields.');
+        }
+        
+        // Validate phone number format (basic validation)
+        const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+        if (!phoneRegex.test(formData.contactPhone)) {
+            throw new Error('Please enter a valid phone number.');
         }
         
         // Add item to Firestore first to get ID
@@ -742,7 +777,9 @@ function filterItems() {
         filteredItems = filteredItems.filter(item => 
             item.title.toLowerCase().includes(searchTerm) ||
             item.description.toLowerCase().includes(searchTerm) ||
-            item.location.toLowerCase().includes(searchTerm)
+            item.location.toLowerCase().includes(searchTerm) ||
+            (item.contactName && item.contactName.toLowerCase().includes(searchTerm)) ||
+            (item.contactPhone && item.contactPhone.includes(searchTerm))
         );
     }
     
@@ -752,6 +789,124 @@ function filterItems() {
     }
     
     displayItems(filteredItems);
+}
+
+// =============================================================================
+// EDIT FUNCTIONS
+// =============================================================================
+
+// Open edit modal and populate with current item data
+function openEditModal(item) {
+    console.log('Opening edit modal for item:', item);
+    
+    try {
+        // Populate form fields with current item data
+        document.getElementById('editItemTitle').value = item.title || '';
+        document.getElementById('editItemStatus').value = item.status || '';
+        document.getElementById('editItemDescription').value = item.description || '';
+        document.getElementById('editItemLocation').value = item.location || '';
+        document.getElementById('editItemDate').value = item.date || '';
+        document.getElementById('editContactPhone').value = item.contactPhone || '';
+        document.getElementById('editContactName').value = item.contactName || '';
+        
+        // Clear image preview
+        document.getElementById('editImagePreview').style.display = 'none';
+        document.getElementById('editItemImage').value = '';
+        
+        // Show modal
+        const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+        editModal.show();
+        
+        console.log('Edit modal opened successfully');
+    } catch (error) {
+        console.error('Error opening edit modal:', error);
+        showAlert('Error opening edit form: ' + error.message, 'danger');
+    }
+}
+
+// Handle edit form submission
+async function handleEditForm() {
+    if (!currentUser) {
+        showAlert('Please login to edit an item.', 'warning');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('saveEditBtn');
+    const editSpinner = document.getElementById('editSpinner');
+    
+    try {
+        // Show loading state
+        saveBtn.disabled = true;
+        editSpinner.style.display = 'inline-block';
+        
+        // Get form data
+        const formData = {
+            title: document.getElementById('editItemTitle').value.trim(),
+            description: document.getElementById('editItemDescription').value.trim(),
+            location: document.getElementById('editItemLocation').value.trim(),
+            status: document.getElementById('editItemStatus').value,
+            date: document.getElementById('editItemDate').value,
+            contactPhone: document.getElementById('editContactPhone').value.trim(),
+            contactName: document.getElementById('editContactName').value.trim()
+        };
+        
+        // Validate form data
+        if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
+            throw new Error('Please fill in all required fields.');
+        }
+        
+        // Validate phone number format
+        const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+        if (!phoneRegex.test(formData.contactPhone)) {
+            throw new Error('Please enter a valid phone number.');
+        }
+        
+        // Update item in Firestore
+        await updateItem(currentItemId, formData);
+        
+        // Upload new image if provided
+        const imageFile = document.getElementById('editItemImage').files[0];
+        if (imageFile) {
+            const imageUrl = await uploadImage(imageFile, currentItemId);
+            await updateItem(currentItemId, { imageUrl });
+        }
+        
+        // Close modal
+        const editModal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
+        editModal.hide();
+        
+        // Show success message
+        showAlert('Item updated successfully!', 'success');
+        
+        // Reload item details
+        loadItemDetails();
+        
+    } catch (error) {
+        console.error('Error updating item:', error);
+        showAlert('Error updating item: ' + error.message, 'danger');
+    } finally {
+        // Hide loading state
+        saveBtn.disabled = false;
+        editSpinner.style.display = 'none';
+    }
+}
+
+// Handle edit image preview
+function handleEditImagePreview(event) {
+    const file = event.target.files[0];
+    const preview = document.getElementById('editImagePreview');
+    const previewImg = document.getElementById('editPreviewImg');
+    
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            preview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    } else {
+        preview.style.display = 'none';
+    }
 }
 
 // =============================================================================
@@ -886,6 +1041,35 @@ function setupCommonEventListeners() {
         signupForm.addEventListener('submit', handleSignupForm);
     }
     
+    // Edit button
+    const editBtn = document.getElementById('editBtn');
+    if (editBtn) {
+        console.log('Edit button found, adding event listener');
+        editBtn.addEventListener('click', () => {
+            console.log('Edit button clicked, currentItemData:', currentItemData);
+            if (currentItemData) {
+                openEditModal(currentItemData);
+            } else {
+                console.error('No current item data available');
+                showAlert('No item data available for editing', 'warning');
+            }
+        });
+    } else {
+        console.error('Edit button not found in DOM');
+    }
+    
+    // Save edit button
+    const saveEditBtn = document.getElementById('saveEditBtn');
+    if (saveEditBtn) {
+        saveEditBtn.addEventListener('click', handleEditForm);
+    }
+    
+    // Edit image preview
+    const editImageInput = document.getElementById('editItemImage');
+    if (editImageInput) {
+        editImageInput.addEventListener('change', handleEditImagePreview);
+    }
+    
     // Delete buttons
     const deleteBtn = document.getElementById('deleteBtn');
     if (deleteBtn) {
@@ -911,4 +1095,21 @@ document.addEventListener('DOMContentLoaded', () => {
 window.viewItem = viewItem;
 window.clearForm = clearForm;
 window.deleteItemWithConfirmation = deleteItemWithConfirmation;
+window.openEditModal = openEditModal;
+window.handleEditForm = handleEditForm;
+
+// Test function for debugging
+window.testEdit = function() {
+    console.log('Testing edit functionality...');
+    console.log('Current user:', currentUser);
+    console.log('Current item data:', currentItemData);
+    console.log('Current item ID:', currentItemId);
+    
+    if (currentItemData) {
+        console.log('Opening edit modal with test data');
+        openEditModal(currentItemData);
+    } else {
+        console.log('No item data available for testing');
+    }
+};
 
