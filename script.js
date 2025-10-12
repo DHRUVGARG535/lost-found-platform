@@ -42,10 +42,14 @@ function checkAuth() {
         
         // Load appropriate content based on page
         const currentPage = window.location.pathname.split('/').pop();
+        console.log('Current page:', currentPage, 'User:', user);
+        
         if (currentPage === 'myitems.html' || currentPage === 'report.html') {
             if (!user) {
+                console.log('No user, showing auth required');
                 showAuthRequired();
             } else {
+                console.log('User logged in, hiding auth required');
                 hideAuthRequired();
                 if (currentPage === 'myitems.html') {
                     loadUserItems();
@@ -78,6 +82,12 @@ function showAuthRequired() {
     const itemsContainer = document.getElementById('itemsContainer');
     const noItemsMessage = document.getElementById('noItemsMessage');
     
+    console.log('Showing auth required:', {
+        authRequired: !!authRequired,
+        form: !!form,
+        filterSection: !!filterSection
+    });
+    
     if (authRequired) authRequired.style.display = 'block';
     if (form) form.style.display = 'none';
     if (filterSection) filterSection.style.display = 'none';
@@ -95,6 +105,8 @@ function hideAuthRequired() {
     if (authRequired) authRequired.style.display = 'none';
     if (form) form.style.display = 'block';
     if (filterSection) filterSection.style.display = 'block';
+    
+    console.log('Auth required hidden, form shown');
 }
 
 // Sign up function
@@ -227,11 +239,6 @@ async function loadUserItems() {
         console.log('Loaded user items:', items.length, items);
         displayItems(items);
         showLoading(false);
-        
-        // Show success message if items were loaded
-        if (items.length > 0) {
-            showAlert(`Loaded ${items.length} item(s)`, 'success');
-        }
         
     } catch (error) {
         console.error('Error loading user items:', error);
@@ -819,7 +826,12 @@ function initializePage() {
             loadItemDetails();
             break;
         case 'report.html':
-            // Form already set up in HTML
+            console.log('Initializing report.html, currentUser:', currentUser);
+            if (currentUser) {
+                hideAuthRequired();
+            } else {
+                showAuthRequired();
+            }
             break;
         case 'login.html':
             // Forms already set up in HTML
