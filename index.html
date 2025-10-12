@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Campus Lost & Found</title>
+    <title>GEU Lost & Found - Campus Item Recovery</title>
     <!-- Bootstrap 5 CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -14,10 +14,16 @@
     <div id="alertContainer" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
 
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark custom-navbar">
         <div class="container">
-            <a class="navbar-brand" href="index.html">
-                <i class="fas fa-search me-2"></i>Campus Lost & Found
+            <a class="navbar-brand d-flex align-items-center" href="index.html">
+                <div class="college-logo me-3">
+                    <i class="fas fa-graduation-cap"></i>
+                </div>
+                <div class="brand-text">
+                    <div class="college-name">GEU</div>
+                    <div class="app-name">Lost & Found</div>
+                </div>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -25,21 +31,31 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link active" href="index.html">Home</a>
+                        <a class="nav-link active" href="index.html">
+                            <i class="fas fa-home me-1"></i>Home
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="report.html">Report Item</a>
+                        <a class="nav-link" href="report.html">
+                            <i class="fas fa-plus-circle me-1"></i>Report Item
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="myitems.html">My Items</a>
+                        <a class="nav-link" href="myitems.html">
+                            <i class="fas fa-user me-1"></i>My Items
+                        </a>
                     </li>
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link" href="login.html" id="loginLink">Login</a>
+                        <a class="nav-link" href="login.html" id="loginLink">
+                            <i class="fas fa-sign-in-alt me-1"></i>Login
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" id="logoutLink" style="display: none;">Logout</a>
+                        <a class="nav-link" href="#" id="logoutLink" style="display: none;">
+                            <i class="fas fa-sign-out-alt me-1"></i>Logout
+                        </a>
                     </li>
                 </ul>
             </div>

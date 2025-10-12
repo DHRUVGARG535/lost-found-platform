@@ -6,6 +6,97 @@ body {
     line-height: 1.6;
 }
 
+/* Custom Navbar Styles */
+.custom-navbar {
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 0.75rem 0;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    transition: transform 0.2s ease;
+}
+
+.navbar-brand:hover {
+    transform: scale(1.05);
+}
+
+.college-logo {
+    background: linear-gradient(45deg, #ffd700, #ffed4e);
+    color: #1e3c72;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+}
+
+.brand-text {
+    line-height: 1.2;
+}
+
+.college-name {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #ffd700;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.app-name {
+    font-size: 0.9rem;
+    color: #ffffff;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+.navbar-nav .nav-link {
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    margin: 0 0.25rem;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.navbar-nav .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.navbar-nav .nav-link.active {
+    background-color: rgba(255, 215, 0, 0.2);
+    color: #ffd700 !important;
+}
+
+.navbar-nav .nav-link i {
+    font-size: 0.9rem;
+}
+
+/* Mobile navbar improvements */
+@media (max-width: 991.98px) {
+    .navbar-brand {
+        font-size: 1.1rem;
+    }
+    
+    .college-logo {
+        width: 40px;
+        height: 40px;
+        font-size: 1.2rem;
+    }
+    
+    .college-name {
+        font-size: 1.2rem;
+    }
+    
+    .app-name {
+        font-size: 0.8rem;
+    }
+}
+
 /* Alert Container */
 #alertContainer {
     z-index: 9999;
