@@ -6,6 +6,43 @@ body {
     line-height: 1.6;
 }
 
+/* Alert Container */
+#alertContainer {
+    z-index: 9999;
+}
+
+#alertContainer .alert {
+    min-width: 300px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* No Items Message */
+#noItemsMessage {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    border: 2px dashed #dee2e6;
+}
+
+#noItemsMessage i {
+    color: #6c757d;
+    margin-bottom: 1rem;
+}
+
+#noItemsMessage h4 {
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+#noItemsMessage p {
+    color: #6c757d;
+    margin-bottom: 0;
+}
+
 /* Hero Section */
 .hero-section {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

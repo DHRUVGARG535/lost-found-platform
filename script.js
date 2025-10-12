@@ -74,10 +74,16 @@ function showAuthRequired() {
     const authRequired = document.getElementById('authRequired');
     const form = document.getElementById('reportForm');
     const filterSection = document.getElementById('filterSection');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const itemsContainer = document.getElementById('itemsContainer');
+    const noItemsMessage = document.getElementById('noItemsMessage');
     
     if (authRequired) authRequired.style.display = 'block';
     if (form) form.style.display = 'none';
     if (filterSection) filterSection.style.display = 'none';
+    if (loadingSpinner) loadingSpinner.style.display = 'none';
+    if (itemsContainer) itemsContainer.innerHTML = '';
+    if (noItemsMessage) noItemsMessage.style.display = 'none';
 }
 
 // Hide authentication required message
@@ -183,29 +189,57 @@ async function loadItems() {
 
 // Load user's items from Firestore
 async function loadUserItems() {
-    if (!currentUser) return;
+    if (!currentUser) {
+        console.log('No current user, cannot load user items');
+        showAuthRequired();
+        return;
+    }
     
     try {
         showLoading(true);
-        const snapshot = await db.collection('items')
-            .where('userId', '==', currentUser.uid)
-            .orderBy('createdAt', 'desc')
-            .get();
+        console.log('Loading items for user:', currentUser.uid);
+        
+        // Try to load items with proper error handling
+        let snapshot;
+        try {
+            snapshot = await db.collection('items')
+                .where('userId', '==', currentUser.uid)
+                .orderBy('createdAt', 'desc')
+                .get();
+        } catch (queryError) {
+            console.warn('OrderBy query failed, trying without orderBy:', queryError);
+            // If orderBy fails, try without it (in case of missing index)
+            snapshot = await db.collection('items')
+                .where('userId', '==', currentUser.uid)
+                .get();
+        }
         
         items = [];
         snapshot.forEach(doc => {
+            const itemData = doc.data();
+            console.log('Processing item:', doc.id, itemData);
             items.push({
                 id: doc.id,
-                ...doc.data()
+                ...itemData
             });
         });
         
+        console.log('Loaded user items:', items.length, items);
         displayItems(items);
         showLoading(false);
+        
+        // Show success message if items were loaded
+        if (items.length > 0) {
+            showAlert(`Loaded ${items.length} item(s)`, 'success');
+        }
+        
     } catch (error) {
         console.error('Error loading user items:', error);
         showAlert('Error loading your items: ' + error.message, 'danger');
         showLoading(false);
+        
+        // Show empty state on error
+        displayItems([]);
     }
 }
 
@@ -322,7 +356,9 @@ function displayItems(itemsToShow) {
     
     if (itemsToShow.length === 0) {
         container.innerHTML = '';
-        if (noItemsMessage) noItemsMessage.style.display = 'block';
+        if (noItemsMessage) {
+            noItemsMessage.style.display = 'flex';
+        }
         return;
     }
     
@@ -333,36 +369,70 @@ function displayItems(itemsToShow) {
 
 // Create item card HTML
 function createItemCard(item) {
-    const statusClass = item.status === 'Lost' ? 'badge-lost' : 'badge-found';
-    const imageUrl = item.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image';
-    const date = item.createdAt ? formatDate(item.createdAt.toDate()) : 'Unknown date';
-    
-    return `
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card item-card h-100" onclick="viewItem('${item.id}')">
-                <div class="position-relative">
-                    <img src="${imageUrl}" class="card-img-top item-image" alt="${item.title}">
-                    <span class="badge ${statusClass} item-status-badge">${item.status}</span>
-                </div>
-                <div class="card-body d-flex flex-column">
-                    <h5 class="card-title">${item.title}</h5>
-                    <p class="card-text text-muted small">${item.description.substring(0, 100)}${item.description.length > 100 ? '...' : ''}</p>
-                    <div class="mt-auto">
-                        <div class="row text-muted small">
-                            <div class="col-6">
-                                <i class="fas fa-map-marker-alt me-1"></i>
-                                ${item.location}
-                            </div>
-                            <div class="col-6 text-end">
-                                <i class="fas fa-calendar me-1"></i>
-                                ${date}
+    try {
+        const statusClass = item.status === 'Lost' ? 'badge-lost' : 'badge-found';
+        const imageUrl = item.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image';
+        
+        // Handle date formatting safely
+        let date = 'Unknown date';
+        if (item.createdAt) {
+            try {
+                if (item.createdAt.toDate && typeof item.createdAt.toDate === 'function') {
+                    date = formatDate(item.createdAt.toDate());
+                } else if (item.createdAt instanceof Date) {
+                    date = formatDate(item.createdAt);
+                } else if (item.createdAt.seconds) {
+                    date = formatDate(new Date(item.createdAt.seconds * 1000));
+                }
+            } catch (dateError) {
+                console.warn('Date formatting error:', dateError);
+                date = 'Unknown date';
+            }
+        }
+        
+        // Handle description safely
+        const description = item.description || 'No description';
+        const shortDescription = description.length > 100 ? description.substring(0, 100) + '...' : description;
+        
+        return `
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card item-card h-100" onclick="viewItem('${item.id}')">
+                    <div class="position-relative">
+                        <img src="${imageUrl}" class="card-img-top item-image" alt="${item.title || 'Item'}">
+                        <span class="badge ${statusClass} item-status-badge">${item.status || 'Unknown'}</span>
+                    </div>
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">${item.title || 'Untitled Item'}</h5>
+                        <p class="card-text text-muted small">${shortDescription}</p>
+                        <div class="mt-auto">
+                            <div class="row text-muted small">
+                                <div class="col-6">
+                                    <i class="fas fa-map-marker-alt me-1"></i>
+                                    ${item.location || 'Unknown location'}
+                                </div>
+                                <div class="col-6 text-end">
+                                    <i class="fas fa-calendar me-1"></i>
+                                    ${date}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
+        `;
+    } catch (error) {
+        console.error('Error creating item card:', error, item);
+        return `
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card item-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-danger">Error loading item</h5>
+                        <p class="card-text text-muted">There was an error displaying this item.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
 }
 
 // View single item details
@@ -737,8 +807,12 @@ function initializePage() {
             loadItems();
             break;
         case 'myitems.html':
+            console.log('Initializing myitems.html, currentUser:', currentUser);
             if (currentUser) {
                 loadUserItems();
+            } else {
+                console.log('No user logged in, showing auth required');
+                showAuthRequired();
             }
             break;
         case 'item.html':
