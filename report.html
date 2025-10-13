@@ -80,11 +80,11 @@
                         <!-- Report Form -->
                         <form id="reportForm" style="display: none;">
                             <div class="row">
-                                <div class="col-md-6 mb-3">
+                                <div class="col-12 col-md-6 mb-3">
                                     <label for="itemTitle" class="form-label">Item Title *</label>
                                     <input type="text" class="form-control" id="itemTitle" required>
                                 </div>
-                                <div class="col-md-6 mb-3">
+                                <div class="col-12 col-md-6 mb-3">
                                     <label for="itemStatus" class="form-label">Status *</label>
                                     <select class="form-select" id="itemStatus" required>
                                         <option value="">Select Status</option>
@@ -100,13 +100,26 @@
                             </div>
 
                             <div class="row">
-                                <div class="col-md-6 mb-3">
+                                <div class="col-12 col-md-6 mb-3">
                                     <label for="itemLocation" class="form-label">Location *</label>
                                     <input type="text" class="form-control" id="itemLocation" required>
                                 </div>
-                                <div class="col-md-6 mb-3">
+                                <div class="col-12 col-md-6 mb-3">
                                     <label for="itemDate" class="form-label">Date *</label>
                                     <input type="date" class="form-control" id="itemDate" required>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-12 col-md-6 mb-3">
+                                    <label for="contactPhone" class="form-label">Contact Phone Number *</label>
+                                    <input type="tel" class="form-control" id="contactPhone" placeholder="+91 9876543210" required>
+                                    <div class="form-text">This will be visible to help others contact you</div>
+                                </div>
+                                <div class="col-12 col-md-6 mb-3">
+                                    <label for="contactName" class="form-label">Contact Name *</label>
+                                    <input type="text" class="form-control" id="contactName" placeholder="Your name" required>
+                                    <div class="form-text">This will be visible to help others identify you</div>
                                 </div>
                             </div>
 
