@@ -22,6 +22,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const storage = firebase.storage();
 const auth = firebase.auth();
+const itemsCollection = db.collection('lost_items');
 
 // =============================================================================
 // GLOBAL VARIABLES
@@ -30,6 +31,7 @@ let currentUser = null;
 let items = [];
 let currentItemId = null;
 let currentItemData = null;
+let resolvedItems = [];
 
 // =============================================================================
 // AUTHENTICATION FUNCTIONS
@@ -181,16 +183,17 @@ function handleAuthError(error) {
 async function loadItems() {
     try {
         showLoading(true);
-        const snapshot = await db.collection('items').orderBy('createdAt', 'desc').get();
-        items = [];
+        const snapshot = await itemsCollection.orderBy('createdAt', 'desc').get();
+        const fetchedItems = [];
         
         snapshot.forEach(doc => {
-            items.push({
+            fetchedItems.push({
                 id: doc.id,
                 ...doc.data()
             });
         });
         
+        items = fetchedItems.filter(item => !isResolvedStatus(item.status));
         displayItems(items);
         showLoading(false);
     } catch (error) {
@@ -215,28 +218,29 @@ async function loadUserItems() {
         // Try to load items with proper error handling
         let snapshot;
         try {
-            snapshot = await db.collection('items')
+            snapshot = await itemsCollection
                 .where('userId', '==', currentUser.uid)
                 .orderBy('createdAt', 'desc')
                 .get();
         } catch (queryError) {
             console.warn('OrderBy query failed, trying without orderBy:', queryError);
             // If orderBy fails, try without it (in case of missing index)
-            snapshot = await db.collection('items')
+            snapshot = await itemsCollection
                 .where('userId', '==', currentUser.uid)
                 .get();
         }
         
-        items = [];
+        const userItems = [];
         snapshot.forEach(doc => {
             const itemData = doc.data();
             console.log('Processing item:', doc.id, itemData);
-            items.push({
+            userItems.push({
                 id: doc.id,
                 ...itemData
             });
         });
         
+        items = userItems.filter(item => !isResolvedStatus(item.status));
         console.log('Loaded user items:', items.length, items);
         displayItems(items);
         showLoading(false);
@@ -251,11 +255,49 @@ async function loadUserItems() {
     }
 }
 
+async function loadResolvedItems() {
+    try {
+        showLoading(true);
+        console.log('Loading resolved items for history view');
+        const snapshot = await itemsCollection
+            .where('status', '==', 'resolved')
+            .get();
+        
+        resolvedItems = [];
+        snapshot.forEach(doc => {
+            resolvedItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        
+        resolvedItems.sort((a, b) => {
+            const aDate = a.resolvedAt?.toDate ? a.resolvedAt.toDate().getTime() : (a.resolvedAt?.seconds || 0) * 1000;
+            const bDate = b.resolvedAt?.toDate ? b.resolvedAt.toDate().getTime() : (b.resolvedAt?.seconds || 0) * 1000;
+            return (bDate || 0) - (aDate || 0);
+        });
+
+        updateHistorySummary(resolvedItems);
+        filterHistoryItems(document.getElementById('historyFilterSelect')?.value || 'all');
+        showLoading(false);
+    } catch (error) {
+        console.error('Error loading resolved items:', error);
+        showAlert('Error loading resolved items: ' + error.message, 'danger');
+        updateHistorySummary([]);
+        displayHistoryItems([]);
+        showLoading(false);
+    }
+}
+
 // Add new item to Firestore
 async function addItem(itemData) {
     try {
-        const docRef = await db.collection('items').add({
+        const docRef = await itemsCollection.add({
             ...itemData,
+            reporterPhone: itemData.reporterPhone || itemData.contactPhone || '',
+            givenToEnquiry: itemData.givenToEnquiry ?? false,
+            enquiryName: itemData.enquiryName ?? null,
+            enquiryPhone: itemData.enquiryPhone ?? null,
             userId: currentUser.uid,
             userEmail: currentUser.email,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -273,7 +315,7 @@ async function addItem(itemData) {
 // Update item in Firestore
 async function updateItem(itemId, itemData) {
     try {
-        await db.collection('items').doc(itemId).update({
+        await itemsCollection.doc(itemId).update({
             ...itemData,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -288,7 +330,7 @@ async function updateItem(itemId, itemData) {
 // Delete item from Firestore
 async function deleteItem(itemId) {
     try {
-        await db.collection('items').doc(itemId).delete();
+        await itemsCollection.doc(itemId).delete();
         console.log('Item deleted:', itemId);
     } catch (error) {
         console.error('Error deleting item:', error);
@@ -299,7 +341,7 @@ async function deleteItem(itemId) {
 // Get single item from Firestore
 async function getItem(itemId) {
     try {
-        const doc = await db.collection('items').doc(itemId).get();
+        const doc = await itemsCollection.doc(itemId).get();
         if (doc.exists) {
             return {
                 id: doc.id,
@@ -355,6 +397,10 @@ async function deleteImage(imageUrl) {
 // UI FUNCTIONS
 // =============================================================================
 
+function isResolvedStatus(status) {
+    return (status || '').toLowerCase() === 'resolved';
+}
+
 // Display items in the grid
 function displayItems(itemsToShow) {
     const container = document.getElementById('itemsContainer');
@@ -378,8 +424,19 @@ function displayItems(itemsToShow) {
 // Create item card HTML
 function createItemCard(item) {
     try {
-        const statusClass = item.status === 'Lost' ? 'badge-lost' : 'badge-found';
+        const normalizedStatus = (item.status || '').toLowerCase();
+        let statusClass = 'badge-found';
+        if (normalizedStatus === 'lost') {
+            statusClass = 'badge-lost';
+        } else if (normalizedStatus === 'resolved') {
+            statusClass = 'badge-resolved';
+        }
+
         const imageUrl = item.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image';
+        const isGivenToEnquiry = !!item.givenToEnquiry;
+        const contactLabel = isGivenToEnquiry ? 'Enquiry' : 'Reporter';
+        const displayName = isGivenToEnquiry ? (item.enquiryName || 'Building Enquiry') : (item.contactName || 'Unknown');
+        const displayPhone = isGivenToEnquiry ? (item.enquiryPhone || 'Not provided') : (item.reporterPhone || item.contactPhone || 'No phone');
         
         // Handle date formatting safely
         let date = 'Unknown date';
@@ -426,11 +483,11 @@ function createItemCard(item) {
                             <div class="row text-muted small">
                                 <div class="col-6">
                                     <i class="fas fa-user me-1"></i>
-                                    ${item.contactName || 'Unknown'}
+                                    <span class="text-uppercase">${contactLabel}</span>: ${displayName}
                                 </div>
                                 <div class="col-6 text-end">
                                     <i class="fas fa-phone me-1"></i>
-                                    ${item.contactPhone || 'No phone'}
+                                    ${displayPhone}
                                 </div>
                             </div>
                         </div>
@@ -451,6 +508,98 @@ function createItemCard(item) {
             </div>
         `;
     }
+}
+
+function displayHistoryItems(itemsToShow) {
+    const container = document.getElementById('historyItemsContainer');
+    const emptyState = document.getElementById('historyEmptyState');
+    
+    if (!container) return;
+    
+    if (!itemsToShow || itemsToShow.length === 0) {
+        container.innerHTML = '';
+        if (emptyState) emptyState.style.display = 'flex';
+        return;
+    }
+    
+    if (emptyState) emptyState.style.display = 'none';
+    container.innerHTML = itemsToShow.map(item => createHistoryCard(item)).join('');
+}
+
+function updateHistorySummary(items = []) {
+    const totalEl = document.getElementById('historyResolvedCount');
+    const enquiryEl = document.getElementById('historyEnquiryCount');
+    const directEl = document.getElementById('historyDirectCount');
+
+    if (!totalEl || !enquiryEl || !directEl) return;
+
+    const total = items.length;
+    const enquiry = items.filter(item => item.givenToEnquiry).length;
+    const direct = total - enquiry;
+
+    totalEl.textContent = total;
+    enquiryEl.textContent = enquiry;
+    directEl.textContent = direct;
+}
+
+function filterHistoryItems(filterValue = 'all') {
+    let filtered = resolvedItems;
+    if (filterValue === 'enquiry') {
+        filtered = resolvedItems.filter(item => item.givenToEnquiry);
+    } else if (filterValue === 'reporter') {
+        filtered = resolvedItems.filter(item => !item.givenToEnquiry);
+    }
+
+    displayHistoryItems(filtered);
+}
+
+function createHistoryCard(item) {
+    const imageUrl = item.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image';
+    const contactFromEnquiry = !!item.givenToEnquiry;
+    const contactLabel = contactFromEnquiry ? 'Building Enquiry' : 'Reporter';
+    const contactName = contactFromEnquiry ? (item.enquiryName || 'Not provided') : (item.contactName || 'Not provided');
+    const contactPhone = contactFromEnquiry ? (item.enquiryPhone || 'Not provided') : (item.reporterPhone || item.contactPhone || 'Not provided');
+    
+    let resolvedDate = 'Unknown date';
+    if (item.resolvedAt) {
+        try {
+            if (item.resolvedAt.toDate && typeof item.resolvedAt.toDate === 'function') {
+                resolvedDate = formatDate(item.resolvedAt.toDate());
+            } else if (item.resolvedAt instanceof Date) {
+                resolvedDate = formatDate(item.resolvedAt);
+            } else if (item.resolvedAt.seconds) {
+                resolvedDate = formatDate(new Date(item.resolvedAt.seconds * 1000));
+            }
+        } catch (error) {
+            console.warn('Error formatting resolved date:', error);
+        }
+    }
+    
+    return `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 history-card">
+                <div class="position-relative">
+                    <img src="${imageUrl}" class="card-img-top item-image" alt="${item.title || 'Item'}">
+                    <span class="badge badge-resolved item-status-badge text-uppercase">Resolved</span>
+                </div>
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title">${item.title || 'Untitled Item'}</h5>
+                    <p class="text-muted small mb-2">
+                        <i class="fas fa-calendar-check me-1"></i>
+                        Resolved on ${resolvedDate}
+                    </p>
+                    <p class="text-muted small mb-3">
+                        <i class="fas fa-map-marker-alt me-1"></i>
+                        ${item.location || 'Unknown location'}
+                    </p>
+                    <div class="mt-auto">
+                        <p class="mb-1"><strong>${contactLabel} Name:</strong> ${contactName}</p>
+                        <p class="mb-0"><strong>${contactLabel} Phone:</strong> ${contactPhone}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 // View single item details
@@ -502,16 +651,42 @@ function displayItemDetails(item) {
     document.getElementById('itemTitle').textContent = item.title;
     document.getElementById('itemStatus').textContent = item.status;
     document.getElementById('itemLocation').textContent = item.location;
-    document.getElementById('itemDate').textContent = formatDate(item.createdAt.toDate());
+    const itemDateEl = document.getElementById('itemDate');
+    if (item.createdAt && typeof item.createdAt.toDate === 'function') {
+        itemDateEl.textContent = formatDate(item.createdAt.toDate());
+    } else if (item.date) {
+        const parsedDate = new Date(item.date);
+        itemDateEl.textContent = isNaN(parsedDate) ? item.date : formatDate(parsedDate);
+    } else {
+        itemDateEl.textContent = 'Not available';
+    }
     document.getElementById('itemDescription').textContent = item.description;
     document.getElementById('itemReporter').textContent = item.userEmail || 'Unknown';
     
-    // Update contact information
-    document.getElementById('contactName').textContent = item.contactName || 'Not provided';
-    document.getElementById('contactPhone').textContent = item.contactPhone || 'Not provided';
+    // Update contact information with building enquiry support
+    const contactHeading = document.getElementById('contactInfoHeading');
+    const contactNameEl = document.getElementById('contactName');
+    const contactPhoneEl = document.getElementById('contactPhone');
     const contactPhoneLink = document.getElementById('contactPhoneLink');
-    if (item.contactPhone) {
-        contactPhoneLink.href = `tel:${item.contactPhone}`;
+    const isGivenToEnquiry = !!item.givenToEnquiry;
+
+    let phoneToDisplay = null;
+    if (contactHeading) {
+        contactHeading.textContent = isGivenToEnquiry ? 'Building Enquiry Contact' : 'Reporter Contact';
+    }
+
+    if (isGivenToEnquiry) {
+        contactNameEl.textContent = item.enquiryName || 'Not provided';
+        phoneToDisplay = item.enquiryPhone || null;
+    } else {
+        contactNameEl.textContent = item.contactName || 'Not provided';
+        phoneToDisplay = item.reporterPhone || item.contactPhone || null;
+    }
+
+    contactPhoneEl.textContent = phoneToDisplay || 'Not provided';
+
+    if (phoneToDisplay) {
+        contactPhoneLink.href = `tel:${phoneToDisplay}`;
         contactPhoneLink.classList.add('text-primary');
     } else {
         contactPhoneLink.href = '#';
@@ -537,6 +712,12 @@ function displayItemDetails(item) {
         if (actionButtons) {
             actionButtons.style.display = 'block';
         }
+        const resolveBtn = document.getElementById('resolveBtn');
+        if (resolveBtn) {
+            resolveBtn.style.display = isResolvedStatus(item.status) ? 'none' : 'block';
+        }
+    } else if (actionButtons) {
+        actionButtons.style.display = 'none';
     }
     
     itemDetails.style.display = 'block';
@@ -635,6 +816,11 @@ async function handleReportForm(event) {
             contactPhone: document.getElementById('contactPhone').value.trim(),
             contactName: document.getElementById('contactName').value.trim()
         };
+
+        formData.reporterPhone = formData.contactPhone;
+        formData.givenToEnquiry = false;
+        formData.enquiryName = null;
+        formData.enquiryPhone = null;
         
         // Validate form data
         if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
@@ -779,7 +965,10 @@ function filterItems() {
             item.description.toLowerCase().includes(searchTerm) ||
             item.location.toLowerCase().includes(searchTerm) ||
             (item.contactName && item.contactName.toLowerCase().includes(searchTerm)) ||
-            (item.contactPhone && item.contactPhone.includes(searchTerm))
+            (item.contactPhone && item.contactPhone.includes(searchTerm)) ||
+            (item.reporterPhone && item.reporterPhone.includes(searchTerm)) ||
+            (item.enquiryName && item.enquiryName.toLowerCase().includes(searchTerm)) ||
+            (item.enquiryPhone && item.enquiryPhone.includes(searchTerm))
         );
     }
     
@@ -795,6 +984,17 @@ function filterItems() {
 // EDIT FUNCTIONS
 // =============================================================================
 
+function setEnquiryFieldState(isEnabled) {
+    const enquiryFields = document.getElementById('enquiryFields');
+    if (!enquiryFields) return;
+    
+    enquiryFields.style.display = isEnabled ? 'block' : 'none';
+    const inputs = enquiryFields.querySelectorAll('input');
+    inputs.forEach(input => {
+        input.required = isEnabled;
+    });
+}
+
 // Open edit modal and populate with current item data
 function openEditModal(item) {
     console.log('Opening edit modal for item:', item);
@@ -808,6 +1008,17 @@ function openEditModal(item) {
         document.getElementById('editItemDate').value = item.date || '';
         document.getElementById('editContactPhone').value = item.contactPhone || '';
         document.getElementById('editContactName').value = item.contactName || '';
+        
+        const enquiryToggle = document.getElementById('givenToEnquiryToggle');
+        const enquiryNameInput = document.getElementById('enquiryNameInput');
+        const enquiryPhoneInput = document.getElementById('enquiryPhoneInput');
+        
+        if (enquiryToggle) {
+            enquiryToggle.checked = !!item.givenToEnquiry;
+            if (enquiryNameInput) enquiryNameInput.value = item.enquiryName || '';
+            if (enquiryPhoneInput) enquiryPhoneInput.value = item.enquiryPhone || '';
+            setEnquiryFieldState(enquiryToggle.checked);
+        }
         
         // Clear image preview
         document.getElementById('editImagePreview').style.display = 'none';
@@ -849,6 +1060,13 @@ async function handleEditForm() {
             contactPhone: document.getElementById('editContactPhone').value.trim(),
             contactName: document.getElementById('editContactName').value.trim()
         };
+
+        const enquiryToggle = document.getElementById('givenToEnquiryToggle');
+        const enquiryNameInput = document.getElementById('enquiryNameInput');
+        const enquiryPhoneInput = document.getElementById('enquiryPhoneInput');
+        const givenToEnquiry = enquiryToggle ? enquiryToggle.checked : false;
+        const enquiryName = enquiryNameInput ? enquiryNameInput.value.trim() : '';
+        const enquiryPhone = enquiryPhoneInput ? enquiryPhoneInput.value.trim() : '';
         
         // Validate form data
         if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
@@ -860,6 +1078,20 @@ async function handleEditForm() {
         if (!phoneRegex.test(formData.contactPhone)) {
             throw new Error('Please enter a valid phone number.');
         }
+        
+        if (givenToEnquiry) {
+            if (!enquiryName || !enquiryPhone) {
+                throw new Error('Building enquiry name and phone are required.');
+            }
+            if (!phoneRegex.test(enquiryPhone)) {
+                throw new Error('Please enter a valid building enquiry phone number.');
+            }
+        }
+
+        formData.reporterPhone = formData.contactPhone;
+        formData.givenToEnquiry = givenToEnquiry;
+        formData.enquiryName = givenToEnquiry ? enquiryName : null;
+        formData.enquiryPhone = givenToEnquiry ? enquiryPhone : null;
         
         // Update item in Firestore
         await updateItem(currentItemId, formData);
@@ -888,6 +1120,32 @@ async function handleEditForm() {
         // Hide loading state
         saveBtn.disabled = false;
         editSpinner.style.display = 'none';
+    }
+}
+
+async function markItemResolved() {
+    if (!currentUser || !currentItemId) {
+        showAlert('You must be logged in to update this item.', 'warning');
+        return;
+    }
+
+    try {
+        const resolveBtn = document.getElementById('resolveBtn');
+        if (resolveBtn) resolveBtn.disabled = true;
+
+        await updateItem(currentItemId, {
+            status: 'resolved',
+            resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        showAlert('Item marked as resolved!', 'success');
+        await loadItemDetails();
+    } catch (error) {
+        console.error('Error marking item resolved:', error);
+        showAlert('Error marking item resolved: ' + error.message, 'danger');
+    } finally {
+        const resolveBtn = document.getElementById('resolveBtn');
+        if (resolveBtn) resolveBtn.disabled = false;
     }
 }
 
@@ -940,6 +1198,8 @@ async function deleteItemWithConfirmation(itemId) {
                 loadUserItems();
             } else if (currentPage === 'item.html') {
                 window.location.href = 'index.html';
+            } else if (currentPage === 'history.html') {
+                loadResolvedItems();
             } else {
                 loadItems();
             }
@@ -988,6 +1248,9 @@ function initializePage() {
                 showAuthRequired();
             }
             break;
+        case 'history.html':
+            loadResolvedItems();
+            break;
         case 'login.html':
             // Forms already set up in HTML
             break;
@@ -1015,6 +1278,13 @@ function setupCommonEventListeners() {
     
     if (statusFilter) {
         statusFilter.addEventListener('change', filterItems);
+    }
+
+    const historyFilterSelect = document.getElementById('historyFilterSelect');
+    if (historyFilterSelect) {
+        historyFilterSelect.addEventListener('change', (event) => {
+            filterHistoryItems(event.target.value);
+        });
     }
     
     // Report form
@@ -1068,6 +1338,18 @@ function setupCommonEventListeners() {
     const editImageInput = document.getElementById('editItemImage');
     if (editImageInput) {
         editImageInput.addEventListener('change', handleEditImagePreview);
+    }
+    
+    const enquiryToggle = document.getElementById('givenToEnquiryToggle');
+    if (enquiryToggle) {
+        enquiryToggle.addEventListener('change', (event) => {
+            setEnquiryFieldState(event.target.checked);
+        });
+    }
+    
+    const resolveBtn = document.getElementById('resolveBtn');
+    if (resolveBtn) {
+        resolveBtn.addEventListener('click', markItemResolved);
     }
     
     // Delete buttons

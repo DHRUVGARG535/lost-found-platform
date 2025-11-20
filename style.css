@@ -215,6 +215,34 @@ body {
     background-color: #28a745 !important;
 }
 
+.badge-resolved {
+    background-color: #6c757d !important;
+}
+
+.history-card {
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.history-card .item-image {
+    height: 220px;
+    object-fit: cover;
+}
+
+.history-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.08);
+}
+
+.history-summary .summary-card {
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.08), rgba(118, 75, 162, 0.08));
+    padding: 16px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+}
+
 /* Form Styles */
 .form-control:focus {
     border-color: #667eea;
