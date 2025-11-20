@@ -32,6 +32,12 @@ let items = [];
 let currentItemId = null;
 let currentItemData = null;
 let resolvedItems = [];
+let chatItems = [];
+let selectedChatItemId = null;
+let chatMessagesUnsubscribe = null;
+let chatPreselectedItemId = null;
+let chatPageEventsBound = false;
+let chatSearchTerm = '';
 
 // =============================================================================
 // AUTHENTICATION FUNCTIONS
@@ -47,15 +53,22 @@ function checkAuth() {
         const currentPage = window.location.pathname.split('/').pop();
         console.log('Current page:', currentPage, 'User:', user);
         
-        if (currentPage === 'myitems.html' || currentPage === 'report.html') {
+        const authRequiredPages = ['myitems.html', 'report.html', 'chat.html'];
+        if (authRequiredPages.includes(currentPage)) {
             if (!user) {
                 console.log('No user, showing auth required');
                 showAuthRequired();
+                if (currentPage === 'chat.html') {
+                    toggleChatLayout(false);
+                    resetChatPanel();
+                }
             } else {
                 console.log('User logged in, hiding auth required');
                 hideAuthRequired();
                 if (currentPage === 'myitems.html') {
                     loadUserItems();
+                } else if (currentPage === 'chat.html') {
+                    initializeChatInterface(true);
                 }
             }
         }
@@ -663,6 +676,11 @@ function displayItemDetails(item) {
     document.getElementById('itemDescription').textContent = item.description;
     document.getElementById('itemReporter').textContent = item.userEmail || 'Unknown';
     
+    const chatButton = document.getElementById('chatWithReporterBtn');
+    if (chatButton) {
+        chatButton.href = `chat.html?itemId=${item.id}`;
+    }
+
     // Update contact information with building enquiry support
     const contactHeading = document.getElementById('contactInfoHeading');
     const contactNameEl = document.getElementById('contactName');
@@ -716,6 +734,7 @@ function displayItemDetails(item) {
         if (resolveBtn) {
             resolveBtn.style.display = isResolvedStatus(item.status) ? 'none' : 'block';
         }
+        initializeEnquirySection(item);
     } else if (actionButtons) {
         actionButtons.style.display = 'none';
     }
@@ -981,19 +1000,319 @@ function filterItems() {
 }
 
 // =============================================================================
-// EDIT FUNCTIONS
+// CHAT FUNCTIONS
 // =============================================================================
 
-function setEnquiryFieldState(isEnabled) {
-    const enquiryFields = document.getElementById('enquiryFields');
-    if (!enquiryFields) return;
-    
-    enquiryFields.style.display = isEnabled ? 'block' : 'none';
-    const inputs = enquiryFields.querySelectorAll('input');
-    inputs.forEach(input => {
-        input.required = isEnabled;
+function toggleChatLayout(show) {
+    const chatLayout = document.getElementById('chatLayout');
+    if (chatLayout) {
+        chatLayout.style.display = show ? '' : 'none';
+    }
+}
+
+function resetChatPanel() {
+    selectedChatItemId = null;
+    cleanupChatSubscription();
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) chatMessages.innerHTML = '';
+    const chatForm = document.getElementById('chatForm');
+    if (chatForm) chatForm.style.display = 'none';
+    const chatEmptyState = document.getElementById('chatEmptyState');
+    if (chatEmptyState) chatEmptyState.style.display = 'block';
+    const chatTitle = document.getElementById('chatItemTitle');
+    if (chatTitle) chatTitle.textContent = 'Select an item';
+    const chatSubtitle = document.getElementById('chatItemSubtitle');
+    if (chatSubtitle) {
+        chatSubtitle.textContent = 'Choose an item from the list to view its chat.';
+    }
+    const viewBtn = document.getElementById('chatViewItemBtn');
+    if (viewBtn) {
+        viewBtn.classList.add('disabled');
+        viewBtn.setAttribute('aria-disabled', 'true');
+        viewBtn.href = '#';
+    }
+    const loadingEl = document.getElementById('chatMessagesLoading');
+    if (loadingEl) loadingEl.style.display = 'none';
+}
+
+async function initializeChatInterface(forceReload = false) {
+    const chatLayout = document.getElementById('chatLayout');
+    if (!chatLayout) return;
+
+    if (!currentUser) {
+        showAuthRequired();
+        toggleChatLayout(false);
+        showLoading(false);
+        resetChatPanel();
+        return;
+    }
+
+    hideAuthRequired();
+    toggleChatLayout(true);
+
+    if (!chatPageEventsBound) {
+        const searchInput = document.getElementById('chatSearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => filterChatItems(searchInput.value));
+        }
+        const chatForm = document.getElementById('chatForm');
+        if (chatForm) {
+            chatForm.addEventListener('submit', sendChatMessage);
+        }
+        const params = new URLSearchParams(window.location.search);
+        chatPreselectedItemId = params.get('itemId');
+        chatPageEventsBound = true;
+    }
+
+    if (!chatItems.length || forceReload) {
+        await loadChatItemsForChatPage();
+    } else {
+        renderChatItems(getFilteredChatItems());
+    }
+
+    if (chatPreselectedItemId) {
+        selectChatItem(chatPreselectedItemId);
+        chatPreselectedItemId = null;
+    }
+}
+
+async function loadChatItemsForChatPage() {
+    try {
+        showLoading(true);
+        const snapshot = await itemsCollection.orderBy('createdAt', 'desc').limit(50).get();
+        const fetched = [];
+        snapshot.forEach(doc => {
+            fetched.push({ id: doc.id, ...doc.data() });
+        });
+        chatItems = fetched.filter(item => !isResolvedStatus(item.status));
+        renderChatItems(getFilteredChatItems());
+        if (!chatItems.length) {
+            resetChatPanel();
+        }
+    } catch (error) {
+        console.error('Error loading chat items:', error);
+        showAlert('Error loading chat items: ' + error.message, 'danger');
+        chatItems = [];
+        renderChatItems([]);
+        resetChatPanel();
+    } finally {
+        showLoading(false);
+    }
+}
+
+function getFilteredChatItems() {
+    if (!chatSearchTerm) return chatItems;
+    return chatItems.filter(item => {
+        const search = chatSearchTerm;
+        const fields = [
+            item.title,
+            item.description,
+            item.location,
+            item.contactName,
+            item.userEmail,
+            item.status,
+            item.enquiryName
+        ];
+        if (fields.some(value => value && value.toLowerCase().includes(search))) {
+            return true;
+        }
+        const phones = [item.contactPhone, item.reporterPhone, item.enquiryPhone];
+        return phones.some(value => value && value.includes(search));
     });
 }
+
+function filterChatItems(term = '') {
+    chatSearchTerm = term.trim().toLowerCase();
+    renderChatItems(getFilteredChatItems());
+}
+
+function renderChatItems(itemsToRender = []) {
+    const container = document.getElementById('chatItemList');
+    if (!container) return;
+    if (!itemsToRender.length) {
+        const message = chatSearchTerm
+            ? 'No items match your search.'
+            : 'No active items available for chat.';
+        container.innerHTML = `<div class="text-center text-muted small py-3">${message}</div>`;
+        return;
+    }
+    container.innerHTML = itemsToRender.map(item => {
+        const isActive = item.id === selectedChatItemId;
+        const safeTitle = escapeHtml(item.title || 'Untitled Item');
+        const safeLocation = escapeHtml(item.location || 'Unknown location');
+        const safeContact = escapeHtml(item.contactName || item.userEmail || 'Reporter');
+        const status = escapeHtml(item.status || 'Unknown');
+        return `
+            <button class="chat-item-button ${isActive ? 'active' : ''}" type="button" onclick="selectChatItem('${item.id}')">
+                <h6 class="mb-1">${safeTitle}</h6>
+                <div class="small">
+                    <i class="fas fa-user me-1"></i>${safeContact}
+                    <span class="ms-2"><i class="fas fa-map-marker-alt me-1"></i>${safeLocation}</span>
+                </div>
+                <div class="small text-uppercase mt-1">${status}</div>
+            </button>
+        `;
+    }).join('');
+}
+
+function selectChatItem(itemId) {
+    if (!currentUser) {
+        showAlert('Please login to chat with reporters.', 'warning');
+        return;
+    }
+    const item = chatItems.find(chatItem => chatItem.id === itemId);
+    if (!item) return;
+    selectedChatItemId = itemId;
+    renderChatItems(getFilteredChatItems());
+    updateChatHeader(item);
+    const chatForm = document.getElementById('chatForm');
+    if (chatForm) chatForm.style.display = 'block';
+    const emptyState = document.getElementById('chatEmptyState');
+    if (emptyState) emptyState.style.display = 'none';
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) chatMessages.innerHTML = '';
+    subscribeToChatMessages(itemId);
+}
+
+function updateChatHeader(item) {
+    const titleEl = document.getElementById('chatItemTitle');
+    const subtitleEl = document.getElementById('chatItemSubtitle');
+    const viewBtn = document.getElementById('chatViewItemBtn');
+    if (titleEl) titleEl.textContent = item.title || 'Untitled Item';
+    if (subtitleEl) {
+        const reporter = item.userEmail || item.contactName || 'Reporter';
+        subtitleEl.textContent = `${item.status || 'Unknown status'} · Reporter: ${reporter}`;
+    }
+    if (viewBtn) {
+        viewBtn.href = `item.html?id=${item.id}`;
+        viewBtn.classList.remove('disabled');
+        viewBtn.removeAttribute('aria-disabled');
+    }
+}
+
+function subscribeToChatMessages(itemId) {
+    cleanupChatSubscription();
+    const loadingEl = document.getElementById('chatMessagesLoading');
+    if (loadingEl) loadingEl.style.display = 'block';
+    chatMessagesUnsubscribe = itemsCollection
+        .doc(itemId)
+        .collection('chats')
+        .orderBy('createdAt', 'asc')
+        .onSnapshot(
+            (snapshot) => {
+                if (loadingEl) loadingEl.style.display = 'none';
+                const messages = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                renderChatMessages(messages);
+            },
+            (error) => {
+                console.error('Chat listener error:', error);
+                showAlert('Error loading chat messages: ' + error.message, 'danger');
+            }
+        );
+}
+
+function cleanupChatSubscription() {
+    if (chatMessagesUnsubscribe) {
+        chatMessagesUnsubscribe();
+        chatMessagesUnsubscribe = null;
+    }
+}
+
+function renderChatMessages(messages = []) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    if (!messages.length) {
+        container.innerHTML = '<p class="text-center text-muted mt-3">No messages yet. Start the conversation!</p>';
+        return;
+    }
+    container.innerHTML = messages.map(message => {
+        const isOwn = currentUser && message.senderId === currentUser.uid;
+        const sender = isOwn ? 'You' : (message.senderName || message.senderEmail || 'Unknown');
+        const safeBody = escapeHtml(message.message || '').replace(/\n/g, '<br>');
+        return `
+            <div class="chat-message ${isOwn ? 'chat-message-self' : ''}">
+                <div class="chat-message-meta">
+                    <span>${escapeHtml(sender)}</span>
+                    <span>${formatChatTimestamp(message.createdAt)}</span>
+                </div>
+                <div class="chat-message-body">${safeBody}</div>
+            </div>
+        `;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+function formatChatTimestamp(timestamp) {
+    if (!timestamp) return 'Sending...';
+    let date;
+    if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+        date = timestamp.toDate();
+    } else if (timestamp.seconds) {
+        date = new Date(timestamp.seconds * 1000);
+    } else {
+        date = new Date(timestamp);
+    }
+    return formatDate(date);
+}
+
+function escapeHtml(text = '') {
+    return String(text).replace(/[&<>"']/g, (char) => {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return map[char] || char;
+    });
+}
+
+async function sendChatMessage(event) {
+    event.preventDefault();
+    if (!currentUser) {
+        showAlert('Please login to send a message.', 'warning');
+        return;
+    }
+    if (!selectedChatItemId) {
+        showAlert('Select an item before sending a message.', 'warning');
+        return;
+    }
+    const chatInput = document.getElementById('chatInput');
+    const spinner = document.getElementById('chatSendSpinner');
+    const sendBtn = document.getElementById('chatSendBtn');
+    if (!chatInput || !sendBtn) return;
+    const messageText = chatInput.value.trim();
+    if (!messageText) return;
+    try {
+        sendBtn.disabled = true;
+        if (spinner) spinner.style.display = 'inline-block';
+        await itemsCollection
+            .doc(selectedChatItemId)
+            .collection('chats')
+            .add({
+                message: messageText,
+                senderId: currentUser.uid,
+                senderEmail: currentUser.email,
+                senderName: currentUser.displayName || currentUser.email,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        chatInput.value = '';
+    } catch (error) {
+        console.error('Error sending chat message:', error);
+        showAlert('Error sending message: ' + error.message, 'danger');
+    } finally {
+        sendBtn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+    }
+}
+
+// =============================================================================
+// EDIT FUNCTIONS
+// =============================================================================
 
 // Open edit modal and populate with current item data
 function openEditModal(item) {
@@ -1008,17 +1327,6 @@ function openEditModal(item) {
         document.getElementById('editItemDate').value = item.date || '';
         document.getElementById('editContactPhone').value = item.contactPhone || '';
         document.getElementById('editContactName').value = item.contactName || '';
-        
-        const enquiryToggle = document.getElementById('givenToEnquiryToggle');
-        const enquiryNameInput = document.getElementById('enquiryNameInput');
-        const enquiryPhoneInput = document.getElementById('enquiryPhoneInput');
-        
-        if (enquiryToggle) {
-            enquiryToggle.checked = !!item.givenToEnquiry;
-            if (enquiryNameInput) enquiryNameInput.value = item.enquiryName || '';
-            if (enquiryPhoneInput) enquiryPhoneInput.value = item.enquiryPhone || '';
-            setEnquiryFieldState(enquiryToggle.checked);
-        }
         
         // Clear image preview
         document.getElementById('editImagePreview').style.display = 'none';
@@ -1061,13 +1369,6 @@ async function handleEditForm() {
             contactName: document.getElementById('editContactName').value.trim()
         };
 
-        const enquiryToggle = document.getElementById('givenToEnquiryToggle');
-        const enquiryNameInput = document.getElementById('enquiryNameInput');
-        const enquiryPhoneInput = document.getElementById('enquiryPhoneInput');
-        const givenToEnquiry = enquiryToggle ? enquiryToggle.checked : false;
-        const enquiryName = enquiryNameInput ? enquiryNameInput.value.trim() : '';
-        const enquiryPhone = enquiryPhoneInput ? enquiryPhoneInput.value.trim() : '';
-        
         // Validate form data
         if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
             throw new Error('Please fill in all required fields.');
@@ -1079,19 +1380,7 @@ async function handleEditForm() {
             throw new Error('Please enter a valid phone number.');
         }
         
-        if (givenToEnquiry) {
-            if (!enquiryName || !enquiryPhone) {
-                throw new Error('Building enquiry name and phone are required.');
-            }
-            if (!phoneRegex.test(enquiryPhone)) {
-                throw new Error('Please enter a valid building enquiry phone number.');
-            }
-        }
-
         formData.reporterPhone = formData.contactPhone;
-        formData.givenToEnquiry = givenToEnquiry;
-        formData.enquiryName = givenToEnquiry ? enquiryName : null;
-        formData.enquiryPhone = givenToEnquiry ? enquiryPhone : null;
         
         // Update item in Firestore
         await updateItem(currentItemId, formData);
@@ -1146,6 +1435,76 @@ async function markItemResolved() {
     } finally {
         const resolveBtn = document.getElementById('resolveBtn');
         if (resolveBtn) resolveBtn.disabled = false;
+    }
+}
+
+function initializeEnquirySection(item) {
+    const toggle = document.getElementById('actionGivenToEnquiry');
+    const nameInput = document.getElementById('actionEnquiryName');
+    const phoneInput = document.getElementById('actionEnquiryPhone');
+
+    if (!toggle || !nameInput || !phoneInput) return;
+
+    const isGiven = !!item.givenToEnquiry;
+    toggle.checked = isGiven;
+    updateEnquiryFieldsVisibility(isGiven);
+    nameInput.value = item.enquiryName || '';
+    phoneInput.value = item.enquiryPhone || '';
+}
+
+function updateEnquiryFieldsVisibility(isVisible) {
+    const fields = document.getElementById('actionEnquiryFields');
+    if (fields) {
+        fields.style.display = isVisible ? 'block' : 'none';
+    }
+}
+
+async function saveEnquiryDetails() {
+    if (!currentUser || !currentItemId) {
+        showAlert('You must be logged in to update enquiry details.', 'warning');
+        return;
+    }
+
+    const toggle = document.getElementById('actionGivenToEnquiry');
+    const nameInput = document.getElementById('actionEnquiryName');
+    const phoneInput = document.getElementById('actionEnquiryPhone');
+    const saveBtn = document.getElementById('saveEnquiryBtn');
+    const spinner = document.getElementById('saveEnquirySpinner');
+
+    if (!toggle || !nameInput || !phoneInput || !saveBtn) return;
+
+    const isGiven = toggle.checked;
+    const enquiryName = nameInput.value.trim();
+    const enquiryPhone = phoneInput.value.trim();
+    const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+
+    try {
+        saveBtn.disabled = true;
+        if (spinner) spinner.style.display = 'inline-block';
+
+        if (isGiven) {
+            if (!enquiryName || !enquiryPhone) {
+                throw new Error('Please provide the building enquiry contact name and phone number.');
+            }
+            if (!phoneRegex.test(enquiryPhone)) {
+                throw new Error('Please enter a valid enquiry phone number.');
+            }
+        }
+
+        await updateItem(currentItemId, {
+            givenToEnquiry: isGiven,
+            enquiryName: isGiven ? enquiryName : null,
+            enquiryPhone: isGiven ? enquiryPhone : null
+        });
+
+        showAlert('Building enquiry information updated.', 'success');
+        await loadItemDetails();
+    } catch (error) {
+        console.error('Error updating enquiry details:', error);
+        showAlert('Error updating enquiry details: ' + error.message, 'danger');
+    } finally {
+        saveBtn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
     }
 }
 
@@ -1254,6 +1613,9 @@ function initializePage() {
         case 'login.html':
             // Forms already set up in HTML
             break;
+        case 'chat.html':
+            initializeChatInterface();
+            break;
     }
 }
 
@@ -1340,11 +1702,16 @@ function setupCommonEventListeners() {
         editImageInput.addEventListener('change', handleEditImagePreview);
     }
     
-    const enquiryToggle = document.getElementById('givenToEnquiryToggle');
-    if (enquiryToggle) {
-        enquiryToggle.addEventListener('change', (event) => {
-            setEnquiryFieldState(event.target.checked);
+    const actionEnquiryToggle = document.getElementById('actionGivenToEnquiry');
+    if (actionEnquiryToggle) {
+        actionEnquiryToggle.addEventListener('change', (event) => {
+            updateEnquiryFieldsVisibility(event.target.checked);
         });
+    }
+
+    const saveEnquiryBtn = document.getElementById('saveEnquiryBtn');
+    if (saveEnquiryBtn) {
+        saveEnquiryBtn.addEventListener('click', saveEnquiryDetails);
     }
     
     const resolveBtn = document.getElementById('resolveBtn');
@@ -1379,6 +1746,7 @@ window.clearForm = clearForm;
 window.deleteItemWithConfirmation = deleteItemWithConfirmation;
 window.openEditModal = openEditModal;
 window.handleEditForm = handleEditForm;
+window.selectChatItem = selectChatItem;
 
 // Test function for debugging
 window.testEdit = function() {
