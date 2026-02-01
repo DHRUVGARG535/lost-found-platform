@@ -147,6 +147,32 @@
                                 </div>
                             </div>
 
+                            <!-- Building Enquiry (optional) -->
+                            <div class="mb-3 pt-3 border-top">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fas fa-building text-primary me-2"></i>
+                                    <h6 class="mb-0">Building Enquiry</h6>
+                                    <span class="badge bg-secondary ms-2">Optional</span>
+                                </div>
+                                <p class="text-muted small mb-2">
+                                    If you have already handed this item to the building enquiry desk, you can add details here.
+                                </p>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="reportGivenToEnquiry">
+                                    <label class="form-check-label" for="reportGivenToEnquiry">Item given to Building Enquiry</label>
+                                </div>
+                                <div id="reportEnquiryFields" class="row g-2 mt-2" style="display: none;">
+                                    <div class="col-12 col-md-6">
+                                        <label for="reportEnquiryName" class="form-label small">Enquiry desk name</label>
+                                        <input type="text" class="form-control form-control-sm" id="reportEnquiryName" placeholder="e.g. Main Enquiry Desk">
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label for="reportEnquiryPhone" class="form-label small">Enquiry phone</label>
+                                        <input type="tel" class="form-control form-control-sm" id="reportEnquiryPhone" placeholder="+91 9000000000">
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                                 <button type="button" class="btn btn-secondary me-md-2" onclick="clearForm()">Clear</button>
                                 <button type="submit" class="btn btn-primary" id="submitBtn">

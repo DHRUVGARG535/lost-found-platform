@@ -798,6 +798,42 @@ body {
     z-index: 1;
 }
 
+/* Google Sign-In button – Google brand colours */
+.btn-google {
+    background: #fff !important;
+    color: #3c4043 !important;
+    border: 1px solid #dadce0 !important;
+    border-radius: 4px !important;
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    padding: 10px 20px !important;
+    transition: background 0.2s, box-shadow 0.2s !important;
+    position: relative;
+    overflow: visible;
+    box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15) !important;
+}
+.btn-google:hover {
+    background: #f8f9fa !important;
+    color: #202124 !important;
+    border-color: #dadce0 !important;
+    box-shadow: 0 1px 3px 0 rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15) !important;
+}
+.btn-google:active {
+    background: #f1f3f4 !important;
+    box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3) !important;
+}
+.btn-google:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.btn-google .fab.fa-google {
+    color: #4285f4;
+    font-size: 1.1em;
+}
+.btn-google:hover .fab.fa-google {
+    color: #1967d2;
+}
+
 /* Enhanced Navigation Styles */
 .navbar {
     backdrop-filter: blur(20px);

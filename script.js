@@ -915,10 +915,16 @@ async function handleReportForm(event) {
         };
 
         formData.reporterPhone = formData.contactPhone;
-        formData.givenToEnquiry = false;
-        formData.enquiryName = null;
-        formData.enquiryPhone = null;
-        
+
+        // Building enquiry (optional) – from report page
+        const reportEnquiryCheck = document.getElementById('reportGivenToEnquiry');
+        const reportEnquiryNameEl = document.getElementById('reportEnquiryName');
+        const reportEnquiryPhoneEl = document.getElementById('reportEnquiryPhone');
+        const isGivenToEnquiry = reportEnquiryCheck && reportEnquiryCheck.checked;
+        formData.givenToEnquiry = !!isGivenToEnquiry;
+        formData.enquiryName = (isGivenToEnquiry && reportEnquiryNameEl) ? reportEnquiryNameEl.value.trim() || null : null;
+        formData.enquiryPhone = (isGivenToEnquiry && reportEnquiryPhoneEl) ? reportEnquiryPhoneEl.value.trim() || null : null;
+
         // Validate form data
         if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
             throw new Error('Please fill in all required fields.');
@@ -959,9 +965,16 @@ async function handleReportForm(event) {
 
 // Clear report form
 function clearForm() {
-    document.getElementById('reportForm').reset();
-    document.getElementById('imagePreview').style.display = 'none';
-    document.getElementById('previewImg').src = '';
+    const form = document.getElementById('reportForm');
+    if (form) form.reset();
+    const imagePreview = document.getElementById('imagePreview');
+    if (imagePreview) imagePreview.style.display = 'none';
+    const previewImg = document.getElementById('previewImg');
+    if (previewImg) previewImg.src = '';
+    const reportEnquiryFields = document.getElementById('reportEnquiryFields');
+    if (reportEnquiryFields) reportEnquiryFields.style.display = 'none';
+    const reportGivenToEnquiry = document.getElementById('reportGivenToEnquiry');
+    if (reportGivenToEnquiry) reportGivenToEnquiry.checked = false;
 }
 
 // Handle image preview
@@ -1766,6 +1779,15 @@ function setupCommonEventListeners() {
     const reportForm = document.getElementById('reportForm');
     if (reportForm) {
         reportForm.addEventListener('submit', handleReportForm);
+    }
+
+    // Report page: Building enquiry toggle (show/hide optional fields)
+    const reportGivenToEnquiry = document.getElementById('reportGivenToEnquiry');
+    const reportEnquiryFields = document.getElementById('reportEnquiryFields');
+    if (reportGivenToEnquiry && reportEnquiryFields) {
+        reportGivenToEnquiry.addEventListener('change', function () {
+            reportEnquiryFields.style.display = this.checked ? 'flex' : 'none';
+        });
     }
     
     // Image preview
