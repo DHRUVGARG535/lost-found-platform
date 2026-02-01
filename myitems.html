@@ -88,14 +88,16 @@
         </div>
 
         <!-- Filter Section -->
-        <div class="row mb-4" id="filterSection" style="display: none;">
-            <div class="col-md-6">
+        <div class="row g-3 mb-4" id="filterSection" style="display: none;">
+            <div class="col-12 col-md-6">
+                <label for="searchInput" class="form-label small text-muted mb-1 d-block">Search</label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fas fa-search"></i></span>
                     <input type="text" class="form-control" id="searchInput" placeholder="Search my items...">
                 </div>
             </div>
-            <div class="col-md-6">
+            <div class="col-12 col-md-6">
+                <label for="statusFilter" class="form-label small text-muted mb-1 d-block">Filter by status</label>
                 <select class="form-select" id="statusFilter">
                     <option value="">All My Items</option>
                     <option value="Lost">Lost Items</option>
