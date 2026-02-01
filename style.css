@@ -1,4 +1,3 @@
-/* Custom CSS for Campus Lost & Found Platform */
 
 /* Global Styles */
 :root {
@@ -369,6 +368,7 @@ body {
     background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
     opacity: 0;
     transition: var(--transition-normal);
+    pointer-events: none;
 }
 
 .card:hover::before {
@@ -399,6 +399,7 @@ body {
     right: 0;
     height: 2px;
     background: linear-gradient(90deg, var(--accent), transparent);
+    pointer-events: none;
 }
 
 .card-body {
@@ -704,6 +705,7 @@ body {
     height: 100%;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
     transition: var(--transition-slow);
+    pointer-events: none;
 }
 
 .btn-primary:hover::before {
@@ -742,6 +744,7 @@ body {
     height: 100%;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
     transition: var(--transition-slow);
+    pointer-events: none;
 }
 
 .btn-success:hover::before {
@@ -776,6 +779,7 @@ body {
     background: var(--primary-gradient);
     opacity: 0;
     transition: var(--transition-normal);
+    pointer-events: none;
 }
 
 .btn-outline-primary:hover::before {
@@ -790,72 +794,6 @@ body {
 }
 
 .btn-outline-primary span {
-    position: relative;
-    z-index: 1;
-}
-
-/* Google Sign-in Button */
-.btn-google {
-    background: #ffffff;
-    border: 2px solid #dadce0;
-    border-radius: var(--border-radius-md);
-    font-weight: 600;
-    padding: 0.75rem 1.5rem;
-    transition: var(--transition-normal);
-    color: #3c4043;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    box-shadow: var(--shadow-sm);
-}
-
-.btn-google:hover {
-    background: #f8f9fa;
-    border-color: #d2d3d6;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.btn-google:active {
-    transform: translateY(0);
-    box-shadow: var(--shadow-sm);
-}
-
-.btn-google:disabled {
-    opacity: 0.7;
-    transform: none;
-    cursor: not-allowed;
-}
-
-.btn-google .fab {
-    color: #4285f4;
-    font-size: 1.1rem;
-}
-
-/* Divider Styles */
-.divider {
-    position: relative;
-    text-align: center;
-    margin: 1.5rem 0;
-}
-
-.divider::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: #dee2e6;
-}
-
-.divider-text {
-    background: white;
-    padding: 0 1rem;
-    color: #6c757d;
-    font-weight: 500;
-    font-size: 0.875rem;
     position: relative;
     z-index: 1;
 }
@@ -1614,8 +1552,7 @@ footer {
     
     .navbar-nav {
         margin: 0;
-    }
-    
+    } 
     .navbar-nav .nav-item {
         margin-bottom: 0.5rem;
     }
@@ -1831,6 +1768,7 @@ footer {
     background: var(--primary-gradient);
     opacity: 0;
     transition: var(--transition-normal);
+    pointer-events: none;
 }
 
 .nav-tabs .nav-link:hover::before {

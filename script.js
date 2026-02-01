@@ -198,44 +198,71 @@ async function signInWithGoogle() {
 
 // Handle authentication errors
 function handleAuthError(error) {
+    console.error('Auth error:', error);
     let message = 'An error occurred. Please try again.';
-    
-    switch (error.code) {
-        case 'auth/email-already-in-use':
-            message = 'This email is already registered.';
-            break;
-        case 'auth/weak-password':
-            message = 'Password should be at least 6 characters.';
-            break;
-        case 'auth/invalid-email':
-            message = 'Invalid email address.';
-            break;
-        case 'auth/user-not-found':
-            message = 'No account found with this email.';
-            break;
-        case 'auth/wrong-password':
-            message = 'Incorrect password.';
-            break;
-        case 'auth/too-many-requests':
-            message = 'Too many failed attempts. Please try again later.';
-            break;
-        case 'auth/popup-closed-by-user':
-            message = 'Sign-in popup was closed before completion.';
-            break;
-        case 'auth/popup-blocked':
-            message = 'Sign-in popup was blocked by the browser.';
-            break;
-        case 'auth/cancelled-popup-request':
-            message = 'Sign-in was cancelled.';
-            break;
-        case 'auth/operation-not-allowed':
-            message = 'This sign-in method is not enabled. Please contact support.';
-            break;
-        case 'auth/account-exists-with-different-credential':
-            message = 'An account already exists with the same email. Try signing in with email/password.';
-            break;
+
+    if (error && error.code) {
+        switch (error.code) {
+            case 'auth/email-already-in-use':
+                message = 'This email is already registered.';
+                break;
+            case 'auth/weak-password':
+                message = 'Password should be at least 6 characters.';
+                break;
+            case 'auth/invalid-email':
+                message = 'Invalid email address.';
+                break;
+            case 'auth/user-not-found':
+                message = 'No account found with this email.';
+                break;
+            case 'auth/wrong-password':
+                message = 'Incorrect password.';
+                break;
+            case 'auth/too-many-requests':
+                message = 'Too many failed attempts. Please try again later.';
+                break;
+            case 'auth/popup-closed-by-user':
+                message = 'Sign-in popup was closed before completion.';
+                break;
+            case 'auth/popup-blocked':
+                message = 'Sign-in popup was blocked. Try "Continue with Google" again or allow popups.';
+                break;
+            case 'auth/cancelled-popup-request':
+                message = 'Sign-in was cancelled.';
+                break;
+            case 'auth/operation-not-allowed':
+                message = 'This sign-in method is not enabled. Enable Email/Password or Google in Firebase Console → Authentication → Sign-in method.';
+                break;
+            case 'auth/account-exists-with-different-credential':
+                message = 'An account already exists with this email. Try signing in with email/password.';
+                break;
+            case 'auth/unauthorized-domain':
+                message = 'This domain is not authorized for sign-in. Add your domain (e.g. localhost) in Firebase Console → Authentication → Authorized domains.';
+                break;
+            case 'auth/network-request-failed':
+                message = 'Network error. Check your internet connection and try again.';
+                break;
+            case 'auth/web-storage-unsupported':
+                message = 'Browser storage is blocked. Enable cookies for this site or try another browser.';
+                break;
+            case 'auth/internal-error':
+                message = 'Server error. Please try again in a moment.';
+                break;
+            case 'auth/invalid-api-key':
+            case 'auth/api-key-not-valid':
+                message = 'Invalid app configuration. Please contact support.';
+                break;
+            default:
+                // For any other auth error, show Firebase message if available
+                if (error.code.startsWith('auth/') && error.message) {
+                    message = error.message.replace(/^Firebase:\s*/i, '').replace(/\s*\([^)]*\)\.?$/, '').trim() || message;
+                }
+                break;
+        }
+    } else if (error && error.message) {
+        message = error.message;
     }
-    
+
     showAlert(message, 'danger');
 }
 
