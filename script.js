@@ -45,6 +45,20 @@ let chatSearchTerm = '';
 
 // Check if user is authenticated
 function checkAuth() {
+    // Handle Google sign-in redirect return (when popup was blocked)
+    auth.getRedirectResult().then((result) => {
+        if (result.user) {
+            showAlert('Login successful!', 'success');
+            const currentPage = window.location.pathname.split('/').pop();
+            if (currentPage === 'login.html') {
+                window.location.href = 'index.html';
+            }
+        }
+    }).catch((error) => {
+        if (error.code && !error.code.startsWith('auth/')) return;
+        handleAuthError(error);
+    });
+
     auth.onAuthStateChanged((user) => {
         currentUser = user;
         updateAuthUI();
@@ -160,6 +174,28 @@ async function signOut() {
     }
 }
 
+// Sign in with Google (popup; falls back to redirect if popup blocked)
+async function signInWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try {
+        const userCredential = await auth.signInWithPopup(provider);
+        showAlert('Login successful!', 'success');
+        return userCredential.user;
+    } catch (error) {
+        if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+            try {
+                await auth.signInWithRedirect(provider);
+                return null; // Page will reload; getRedirectResult() handles success
+            } catch (redirectError) {
+                handleAuthError(redirectError);
+                throw redirectError;
+            }
+        }
+        handleAuthError(error);
+        throw error;
+    }
+}
+
 // Handle authentication errors
 function handleAuthError(error) {
     let message = 'An error occurred. Please try again.';
@@ -182,6 +218,21 @@ function handleAuthError(error) {
             break;
         case 'auth/too-many-requests':
             message = 'Too many failed attempts. Please try again later.';
+            break;
+        case 'auth/popup-closed-by-user':
+            message = 'Sign-in popup was closed before completion.';
+            break;
+        case 'auth/popup-blocked':
+            message = 'Sign-in popup was blocked by the browser.';
+            break;
+        case 'auth/cancelled-popup-request':
+            message = 'Sign-in was cancelled.';
+            break;
+        case 'auth/operation-not-allowed':
+            message = 'This sign-in method is not enabled. Please contact support.';
+            break;
+        case 'auth/account-exists-with-different-credential':
+            message = 'An account already exists with the same email. Try signing in with email/password.';
             break;
     }
     
@@ -908,27 +959,30 @@ function handleImagePreview(event) {
 async function handleLoginForm(event) {
     event.preventDefault();
     
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
+    const emailEl = document.getElementById('loginEmail');
+    const passwordEl = document.getElementById('loginPassword');
     const loginBtn = document.getElementById('loginBtn');
     const loginSpinner = document.getElementById('loginSpinner');
+    if (!emailEl || !passwordEl) return;
+    
+    const email = emailEl.value.trim();
+    const password = passwordEl.value;
     
     try {
-        loginBtn.disabled = true;
-        loginSpinner.style.display = 'inline-block';
+        if (loginBtn) { loginBtn.disabled = true; }
+        if (loginSpinner) { loginSpinner.style.display = 'inline-block'; }
         
         await signIn(email, password);
         
-        // Redirect to home page
         setTimeout(() => {
             window.location.href = 'index.html';
         }, 1000);
         
     } catch (error) {
-        // Error handled in signIn function
+        // Error already shown in signIn/handleAuthError
     } finally {
-        loginBtn.disabled = false;
-        loginSpinner.style.display = 'none';
+        if (loginBtn) { loginBtn.disabled = false; }
+        if (loginSpinner) { loginSpinner.style.display = 'none'; }
     }
 }
 
@@ -936,33 +990,65 @@ async function handleLoginForm(event) {
 async function handleSignupForm(event) {
     event.preventDefault();
     
-    const email = document.getElementById('signupEmail').value.trim();
-    const password = document.getElementById('signupPassword').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
+    const emailEl = document.getElementById('signupEmail');
+    const passwordEl = document.getElementById('signupPassword');
+    const confirmEl = document.getElementById('confirmPassword');
     const signupBtn = document.getElementById('signupBtn');
     const signupSpinner = document.getElementById('signupSpinner');
+    if (!emailEl || !passwordEl || !confirmEl) return;
+    
+    const email = emailEl.value.trim();
+    const password = passwordEl.value;
+    const confirmPassword = confirmEl.value;
     
     try {
-        // Validate passwords match
         if (password !== confirmPassword) {
-            throw new Error('Passwords do not match.');
+            showAlert('Passwords do not match.', 'danger');
+            return;
         }
         
-        signupBtn.disabled = true;
-        signupSpinner.style.display = 'inline-block';
+        if (signupBtn) { signupBtn.disabled = true; }
+        if (signupSpinner) { signupSpinner.style.display = 'inline-block'; }
         
         await signUp(email, password);
         
-        // Redirect to home page
         setTimeout(() => {
             window.location.href = 'index.html';
         }, 1000);
         
     } catch (error) {
-        // Error handled in signUp function
+        // Error already shown in signUp/handleAuthError
     } finally {
-        signupBtn.disabled = false;
-        signupSpinner.style.display = 'none';
+        if (signupBtn) { signupBtn.disabled = false; }
+        if (signupSpinner) { signupSpinner.style.display = 'none'; }
+    }
+}
+
+// Handle Google sign-in
+async function handleGoogleSignIn() {
+    const googleBtn = document.getElementById('googleSignInBtn');
+    
+    try {
+        if (googleBtn) {
+            googleBtn.disabled = true;
+            googleBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Signing in with Google...';
+        }
+        
+        const user = await signInWithGoogle();
+        // If popup succeeded (user returned), redirect. If redirect was used, page will reload.
+        if (user) {
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 1000);
+        }
+        
+    } catch (error) {
+        // Error shown in signInWithGoogle/handleAuthError
+    } finally {
+        if (googleBtn) {
+            googleBtn.disabled = false;
+            googleBtn.innerHTML = '<i class="fab fa-google me-2"></i>Continue with Google';
+        }
     }
 }
 
@@ -1671,6 +1757,12 @@ function setupCommonEventListeners() {
     const signupForm = document.getElementById('signupForm');
     if (signupForm) {
         signupForm.addEventListener('submit', handleSignupForm);
+    }
+    
+    // Google sign-in button
+    const googleSignInBtn = document.getElementById('googleSignInBtn');
+    if (googleSignInBtn) {
+        googleSignInBtn.addEventListener('click', handleGoogleSignIn);
     }
     
     // Edit button
