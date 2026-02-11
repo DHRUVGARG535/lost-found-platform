@@ -84,19 +84,32 @@
 
         <!-- Filter Section -->
         <div class="row g-3 mb-4" id="filterSection" style="display: none;">
-            <div class="col-12 col-md-6">
+            <div class="col-12 col-md-4">
                 <label for="searchInput" class="form-label small text-muted mb-1 d-block">Search</label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fas fa-search"></i></span>
-                    <input type="text" class="form-control" id="searchInput" placeholder="Search my items...">
+                    <input type="text" class="form-control" id="searchInput" placeholder="Search by title, category, or location">
                 </div>
             </div>
-            <div class="col-12 col-md-6">
+            <div class="col-6 col-md-4">
                 <label for="statusFilter" class="form-label small text-muted mb-1 d-block">Filter by status</label>
                 <select class="form-select" id="statusFilter">
                     <option value="">All My Items</option>
                     <option value="Lost">Lost Items</option>
                     <option value="Found">Found Items</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-4">
+                <label for="categoryFilter" class="form-label small text-muted mb-1 d-block">Filter by category</label>
+                <select class="form-select" id="categoryFilter">
+                    <option value="">All Categories</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Documents">Documents</option>
+                    <option value="ID Card">ID Card</option>
+                    <option value="Clothing">Clothing</option>
+                    <option value="Accessories">Accessories</option>
+                    <option value="Books & Stationery">Books & Stationery</option>
+                    <option value="Others">Others</option>
                 </select>
             </div>
         </div>

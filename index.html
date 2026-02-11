@@ -75,7 +75,10 @@
     <!-- Hero Section -->
     <div class="hero-section bg-light py-5">
         <div class="container text-center">
-            <h1 class="display-4 mb-4">Find What You've Lost</h1>
+            <h1 class="display-4 mb-3">Find What You've Lost</h1>
+            <p class="lead mb-2" id="welcomeBanner" style="display: none;">
+                Welcome, <span id="welcomeName" class="fw-semibold"></span>
+            </p>
             <p class="lead mb-4">A community platform to help reunite lost items with their owners</p>
             <a href="report.html" class="btn btn-primary btn-lg">Report an Item</a>
         </div>
@@ -84,18 +87,30 @@
     <!-- Main Content -->
     <div class="container my-5">
         <!-- Filter Section -->
-        <div class="row mb-4">
-            <div class="col-12 col-md-6 mb-3">
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-md-4">
                 <div class="input-group">
                     <span class="input-group-text"><i class="fas fa-search"></i></span>
-                    <input type="text" class="form-control" id="searchInput" placeholder="Search items...">
+                    <input type="text" class="form-control" id="searchInput" placeholder="Search by title, category, or location">
                 </div>
             </div>
-            <div class="col-12 col-md-6 mb-3">
+            <div class="col-6 col-md-4">
                 <select class="form-select" id="statusFilter">
                     <option value="">All Items</option>
                     <option value="Lost">Lost Items</option>
                     <option value="Found">Found Items</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-4">
+                <select class="form-select" id="categoryFilter">
+                    <option value="">All Categories</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Documents">Documents</option>
+                    <option value="ID Card">ID Card</option>
+                    <option value="Clothing">Clothing</option>
+                    <option value="Accessories">Accessories</option>
+                    <option value="Books & Stationery">Books & Stationery</option>
+                    <option value="Others">Others</option>
                 </select>
             </div>
         </div>

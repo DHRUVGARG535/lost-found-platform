@@ -106,6 +106,7 @@ async function adminLoadItems() {
         const itemName = d.itemName || d.title || 'Untitled Item';
         const category = d.category || 'Uncategorized';
         const status = d.status || 'available';
+        const normalizedStatus = String(status).toLowerCase();
         const statusClass = adminStatusBadgeClass(status);
         const createdAt = adminFormatDate(d.createdAt);
         const finderId = d.userId || d.createdBy || '—';
@@ -113,6 +114,8 @@ async function adminLoadItems() {
         const photoCellContent = photoUrlRaw
             ? `<img src="${escapeHtml(photoUrlRaw)}" alt="Item photo for ${escapeHtml(itemName)}" class="admin-item-thumb rounded">`
             : `<div class="admin-item-thumb-placeholder text-muted"><i class="fas fa-image"></i></div>`;
+
+        const canMarkReturned = normalizedStatus !== 'returned' && normalizedStatus !== 'resolved';
 
         rows.push(`
             <tr>
@@ -129,9 +132,10 @@ async function adminLoadItems() {
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="adminOpenItemDetails('${doc.id}')">
                         View
                     </button>
+                    ${canMarkReturned ? `
                     <button class="btn btn-sm btn-outline-success ms-2" onclick="adminMarkReturned('${doc.id}')">
                         Mark Returned
-                    </button>
+                    </button>` : ''}
                 </td>
             </tr>
         `);
@@ -267,6 +271,7 @@ async function adminMarkReturned(itemId) {
     try {
         await itemsCollection.doc(itemId).update({
             status: 'returned',
+            resolvedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         showAlert('Item marked as returned.', 'success');

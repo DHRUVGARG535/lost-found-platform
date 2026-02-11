@@ -263,6 +263,11 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+.alert-toast {
+    animation: slideIn 0.25s ease-out;
+    border-radius: var(--border-radius-md);
+}
+
 /* No Items Message */
 #noItemsMessage {
     min-height: 300px;
@@ -517,6 +522,37 @@ body {
     background: #6c757d;
 }
 
+/* Unified status badges for cards */
+.badge-status {
+    border-radius: var(--border-radius-md);
+    padding: 0.25rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.badge-status-available,
+.badge-status-found {
+    background: var(--success-gradient);
+    color: #ffffff;
+}
+
+.badge-status-claimed {
+    background: var(--warning-gradient);
+    color: #4a2c00;
+}
+
+.badge-status-returned {
+    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    color: #ffffff;
+}
+
+.badge-status-lost {
+    background: var(--danger-gradient);
+    color: #ffffff;
+}
+
 @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.7; transform: scale(1.2); }
@@ -723,6 +759,14 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
+.btn:disabled,
+.btn[disabled] {
+    opacity: 0.65;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
 .btn-success {
     background: var(--success-gradient);
     border: none;
@@ -767,6 +811,8 @@ body {
     transition: var(--transition-normal);
     position: relative;
     overflow: hidden;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    z-index: 0;
 }
 
 .btn-outline-primary::before {
@@ -780,6 +826,7 @@ body {
     opacity: 0;
     transition: var(--transition-normal);
     pointer-events: none;
+    z-index: -1;
 }
 
 .btn-outline-primary:hover::before {
@@ -787,15 +834,89 @@ body {
 }
 
 .btn-outline-primary:hover {
-    color: white;
+    color: #ffffff !important;
     border-color: transparent;
     transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-lg);
 }
 
 .btn-outline-primary span {
     position: relative;
     z-index: 1;
+}
+
+/* Outline Success Button (used in Admin actions like "Mark Returned" / "Approve") */
+.btn-outline-success {
+    border: 2px solid var(--success);
+    color: var(--success);
+    background: transparent;
+    border-radius: var(--border-radius-md);
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    transition: var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-outline-success::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--success-gradient);
+    opacity: 0;
+    transition: var(--transition-normal);
+    pointer-events: none;
+}
+
+.btn-outline-success:hover::before {
+    opacity: 1;
+}
+
+.btn-outline-success:hover {
+    color: #ffffff !important;
+    border-color: transparent;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Outline Danger Button (used in Admin actions like "Reject") */
+.btn-outline-danger {
+    border: 2px solid var(--danger);
+    color: var(--danger);
+    background: transparent;
+    border-radius: var(--border-radius-md);
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    transition: var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-outline-danger::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--danger-gradient);
+    opacity: 0;
+    transition: var(--transition-normal);
+    pointer-events: none;
+}
+
+.btn-outline-danger:hover::before {
+    opacity: 1;
+}
+
+.btn-outline-danger:hover {
+    color: #ffffff !important;
+    border-color: transparent;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
 }
 
 /* Google Sign-In button – Google brand colours */

@@ -4,13 +4,16 @@ A modern, responsive web application built with HTML, CSS, JavaScript, and Fireb
 
 ## 🚀 Features
 
-- **User Authentication**: Secure login/signup with Firebase Authentication
+- **User Authentication**: Secure login/signup with Firebase Authentication (email/password + Google)
 - **Item Management**: Report, view, edit, and delete lost/found items
+- **Categories**: Classify items (Electronics, Documents, ID Card, Clothing, Accessories, Books & Stationery, Others)
 - **Image Upload**: Upload and store item images using Firebase Storage
 - **Real-time Database**: Store and retrieve items using Firestore
-- **Responsive Design**: Mobile-friendly interface with Bootstrap 5
-- **Search & Filter**: Find items by title, description, location, or status
+- **Responsive Design**: Mobile-friendly interface with Bootstrap 5 and custom modern UI
+- **Search & Filter**: Find items by title, description, location, status, or category
 - **User Dashboard**: View and manage your own reported items
+- **History View**: Dedicated page to browse resolved items and summary stats
+- **Admin Dashboard**: Review all items, claims, and building enquiries (admin only)
 
 ## 📁 Project Structure
 
@@ -131,20 +134,26 @@ Firebase Storage rules:
 
 ### Database Structure
 
-Items are stored in Firestore with the following structure:
+Items are stored in Firestore with a structure similar to:
 
 ```javascript
 {
   title: "Item Title",
   description: "Detailed description",
   location: "Where it was found/lost",
-  status: "Lost" or "Found",
+  status: "Lost" | "Found" | "resolved" | "returned" | "claimed",
   date: "YYYY-MM-DD",
+  category: "Electronics" | "Documents" | "ID Card" | "Clothing" | "Accessories" | "Books & Stationery" | "Others" | null,
   imageUrl: "https://storage.googleapis.com/...",
   userId: "user-uid",
   userEmail: "user@example.com",
   createdAt: timestamp,
   updatedAt: timestamp
+  // Optional fields used for resolution and building enquiry flows
+  givenToEnquiry: boolean,
+  enquiryName: string | null,
+  enquiryPhone: string | null,
+  resolvedAt: timestamp | null
 }
 ```
 
@@ -156,17 +165,18 @@ Items are stored in Firestore with the following structure:
 - Color scheme uses a purple gradient theme
 
 ### Features
-- Add new fields to items by updating the form and Firestore rules
+- Add new fields to items by updating the form, Firestore rules, and the mapping logic in `script.js`
 - Modify validation rules in `firestore.rules`
 - Add new pages by creating HTML files and updating navigation
 
 ## 🚀 Usage
 
-1. **Home Page**: Browse all lost and found items
-2. **Report Item**: Login and report new items with optional images
-3. **My Items**: View and manage your reported items
-4. **Search**: Use the search bar to find specific items
-5. **Filter**: Filter items by status (Lost/Found)
+1. **Home Page**: Browse all active lost and found items with search + status/category filters.
+2. **Report Item**: Login and report new items with optional images and category selection.
+3. **My Items**: View and manage your reported items (users see only **Edit** and **Delete** on their own items).
+4. **History**: See a history of resolved items, including whether they were handed to enquiry or resolved directly.
+5. **Search & Filter**: Use debounced search and filters to quickly narrow down items.
+6. **Admin Dashboard**: Admins can review all items, approve/reject claims, and view building enquiries.
 
 ## 🔒 Security Features
 
@@ -207,7 +217,8 @@ The application is fully responsive and works on:
 
 ### Debug Mode
 
-Open browser developer tools to see console logs for debugging.
+- Open browser developer tools to see console logs for debugging.
+- The app includes basic global error handling for uncaught errors and promise rejections and will surface friendly alerts to users.
 
 ## 📄 License
 

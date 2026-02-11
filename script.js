@@ -25,6 +25,42 @@ const auth = firebase.auth();
 const itemsCollection = db.collection('lost_items');
 
 // =============================================================================
+// CONSTANTS & HELPERS
+// =============================================================================
+
+// Centralized item statuses for consistency
+const ITEM_STATUS = {
+    LOST: 'Lost',
+    FOUND: 'Found',
+    RESOLVED: 'resolved',
+    RETURNED: 'returned',
+    CLAIMED: 'claimed',
+    PENDING: 'pending'
+};
+
+// Centralized categories (keep in sync with HTML <select> options)
+const ITEM_CATEGORIES = [
+    'Electronics',
+    'Documents',
+    'ID Card',
+    'Clothing',
+    'Accessories',
+    'Books & Stationery',
+    'Others'
+];
+
+// Lightweight debounce helper (for search inputs etc.)
+function debounce(fn, delay = 250) {
+    let timeoutId;
+    return (...args) => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(() => fn(...args), delay);
+    };
+}
+
+// =============================================================================
 // GLOBAL VARIABLES
 // =============================================================================
 let currentUser = null;
@@ -116,13 +152,29 @@ function updateAuthUI() {
     const loginLink = document.getElementById('loginLink');
     const logoutLink = document.getElementById('logoutLink');
     const adminLink = document.getElementById('adminLink');
+    const welcomeBanner = document.getElementById('welcomeBanner');
+    const welcomeNameEl = document.getElementById('welcomeName');
     
     if (currentUser) {
         if (loginLink) loginLink.style.display = 'none';
         if (logoutLink) logoutLink.style.display = 'block';
+
+        // Show friendly welcome message on pages that support it (index)
+        if (welcomeBanner && welcomeNameEl) {
+            const rawName = currentUser.displayName || currentUser.email || '';
+            const fallbackName = currentUser.email ? currentUser.email.split('@')[0] : '';
+            const finalName = rawName || fallbackName || 'User';
+            welcomeNameEl.textContent = finalName;
+            welcomeBanner.style.display = 'block';
+        }
     } else {
         if (loginLink) loginLink.style.display = 'block';
         if (logoutLink) logoutLink.style.display = 'none';
+
+        if (welcomeBanner && welcomeNameEl) {
+            welcomeBanner.style.display = 'none';
+            welcomeNameEl.textContent = '';
+        }
     }
 
     // Admin link visibility (role-based)
@@ -396,21 +448,45 @@ async function loadResolvedItems() {
     try {
         showLoading(true);
         console.log('Loading resolved items for history view');
-        const snapshot = await itemsCollection
-            .where('status', '==', 'resolved')
-            .get();
-        
+
         resolvedItems = [];
-        snapshot.forEach(doc => {
+
+        // Load items that are marked as resolved
+        const resolvedSnapshot = await itemsCollection
+            .where('status', '==', ITEM_STATUS.RESOLVED)
+            .get();
+
+        resolvedSnapshot.forEach(doc => {
+            resolvedItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+
+        // Also include items marked as returned (admin action)
+        const returnedSnapshot = await itemsCollection
+            .where('status', '==', ITEM_STATUS.RETURNED)
+            .get();
+
+        returnedSnapshot.forEach(doc => {
             resolvedItems.push({
                 id: doc.id,
                 ...doc.data()
             });
         });
         
+        // Sort by resolution time (fallback to updatedAt, then createdAt)
         resolvedItems.sort((a, b) => {
-            const aDate = a.resolvedAt?.toDate ? a.resolvedAt.toDate().getTime() : (a.resolvedAt?.seconds || 0) * 1000;
-            const bDate = b.resolvedAt?.toDate ? b.resolvedAt.toDate().getTime() : (b.resolvedAt?.seconds || 0) * 1000;
+            const aSource = a.resolvedAt || a.updatedAt || a.createdAt;
+            const bSource = b.resolvedAt || b.updatedAt || b.createdAt;
+
+            const aDate = aSource?.toDate
+                ? aSource.toDate().getTime()
+                : (aSource?.seconds || 0) * 1000;
+            const bDate = bSource?.toDate
+                ? bSource.toDate().getTime()
+                : (bSource?.seconds || 0) * 1000;
+
             return (bDate || 0) - (aDate || 0);
         });
 
@@ -563,6 +639,26 @@ function createItemCard(item) {
     try {
         const title = item.itemName || item.title || 'Untitled Item';
         const category = item.category || 'Uncategorized';
+        const rawStatus = (item.status || 'available').toString();
+        const normalizedStatus = rawStatus.toLowerCase();
+
+        // Map internal status values to user-friendly labels
+        let statusLabel = 'Available';
+        let statusClass = 'badge-status-available';
+
+        if (normalizedStatus === 'claimed' || normalizedStatus === 'pending') {
+            statusLabel = 'Claim Pending';
+            statusClass = 'badge-status-claimed';
+        } else if (normalizedStatus === 'returned' || normalizedStatus === 'resolved') {
+            statusLabel = 'Returned';
+            statusClass = 'badge-status-returned';
+        } else if (normalizedStatus === 'lost') {
+            statusLabel = 'Lost';
+            statusClass = 'badge-status-lost';
+        } else if (normalizedStatus === 'found') {
+            statusLabel = 'Found';
+            statusClass = 'badge-status-found';
+        }
 
         // Handle date formatting safely
         let date = 'Unknown date';
@@ -584,7 +680,10 @@ function createItemCard(item) {
         return `
             <div class="col-md-6 col-lg-4 mb-4">
                 <div class="card item-card h-100">
-                    <div class="card-body d-flex flex-column">
+                    <div class="card-body d-flex flex-column position-relative">
+                        <span class="item-status-badge badge-status ${statusClass}">
+                            ${statusLabel}
+                        </span>
                         <h5 class="card-title mb-2">${title}</h5>
                         <p class="text-muted small mb-1">
                             <i class="fas fa-tags me-1"></i>${category}
@@ -594,7 +693,7 @@ function createItemCard(item) {
                         </p>
                         <div class="mt-auto d-grid">
                             <button class="btn btn-primary btn-sm" onclick="viewItem('${item.id}')">
-                                <i class="fas fa-hand-paper me-1"></i>Claim this item
+                                <i class="fas fa-hand-paper me-1"></i>View &amp; Claim
                             </button>
                         </div>
                     </div>
@@ -666,15 +765,18 @@ function createHistoryCard(item) {
     const contactName = contactFromEnquiry ? (item.enquiryName || 'Not provided') : (item.contactName || 'Not provided');
     const contactPhone = contactFromEnquiry ? (item.enquiryPhone || 'Not provided') : (item.reporterPhone || item.contactPhone || 'Not provided');
     
+    // Prefer the actual resolution time; fall back to last update / creation time
     let resolvedDate = 'Unknown date';
-    if (item.resolvedAt) {
+    const resolvedSource = item.resolvedAt || item.updatedAt || item.createdAt;
+
+    if (resolvedSource) {
         try {
-            if (item.resolvedAt.toDate && typeof item.resolvedAt.toDate === 'function') {
-                resolvedDate = formatDate(item.resolvedAt.toDate());
-            } else if (item.resolvedAt instanceof Date) {
-                resolvedDate = formatDate(item.resolvedAt);
-            } else if (item.resolvedAt.seconds) {
-                resolvedDate = formatDate(new Date(item.resolvedAt.seconds * 1000));
+            if (resolvedSource.toDate && typeof resolvedSource.toDate === 'function') {
+                resolvedDate = formatDate(resolvedSource.toDate());
+            } else if (resolvedSource instanceof Date) {
+                resolvedDate = formatDate(resolvedSource);
+            } else if (resolvedSource.seconds) {
+                resolvedDate = formatDate(new Date(resolvedSource.seconds * 1000));
             }
         } catch (error) {
             console.warn('Error formatting resolved date:', error);
@@ -685,7 +787,7 @@ function createHistoryCard(item) {
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 history-card">
                 <div class="position-relative">
-                    <img src="${imageUrl}" class="card-img-top item-image" alt="${item.title || 'Item'}">
+                    <img src="${imageUrl}" loading="lazy" class="card-img-top item-image" alt="${item.title || 'Item'}">
                     <span class="badge badge-resolved item-status-badge text-uppercase">Resolved</span>
                 </div>
                 <div class="card-body d-flex flex-column">
@@ -755,6 +857,8 @@ async function displayItemDetails(item) {
 
     const role = await getCurrentUserRole();
     const isAdminUser = role === 'admin';
+    const enquiryActionSection = document.getElementById('enquiryActionSection');
+    const resolveBtn = document.getElementById('resolveBtn');
 
     // Update item information (public fields)
     const itemTitleEl = document.getElementById('itemTitle');
@@ -853,11 +957,25 @@ async function displayItemDetails(item) {
         if (actionButtons) {
             actionButtons.style.display = 'block';
         }
-        const resolveBtn = document.getElementById('resolveBtn');
-        if (resolveBtn) {
-            resolveBtn.style.display = isResolvedStatus(item.status) ? 'none' : 'block';
+        // For non-admin owners (users viewing their own item from "My Items"),
+        // only allow Edit and Delete – hide "Mark as Resolved" and Building Enquiry UI.
+        if (!isAdminUser) {
+            if (resolveBtn) {
+                resolveBtn.style.display = 'none';
+            }
+            if (enquiryActionSection) {
+                enquiryActionSection.style.display = 'none';
+            }
+        } else {
+            // Admins can still see and use resolve + enquiry controls if needed
+            if (resolveBtn) {
+                resolveBtn.style.display = isResolvedStatus(item.status) ? 'none' : 'block';
+            }
+            initializeEnquirySection(item);
+            if (enquiryActionSection) {
+                enquiryActionSection.style.display = 'block';
+            }
         }
-        initializeEnquirySection(item);
     } else if (actionButtons) {
         actionButtons.style.display = 'none';
     }
@@ -992,6 +1110,12 @@ async function handleClaimForm(event) {
             throw new Error('Please enter a valid phone number.');
         }
 
+        // Final confirmation before submitting claim
+        const confirmed = window.confirm('Submit this claim for admin review? You will need to show proof of ownership when you collect the item.');
+        if (!confirmed) {
+            return;
+        }
+
         submitBtn.disabled = true;
         if (spinner) spinner.style.display = 'inline-block';
 
@@ -1064,19 +1188,29 @@ function showLoading(show) {
     }
 }
 
-// Show alert message
+// Show alert message (used as lightweight toast)
 function showAlert(message, type = 'info') {
     const alertContainer = document.getElementById('alertContainer') || createAlertContainer();
     
     const alertId = 'alert-' + Date.now();
     const alertHTML = `
-        <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show" role="alert">
+        <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show alert-toast" role="alert">
             ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `;
     
     alertContainer.insertAdjacentHTML('beforeend', alertHTML);
+
+    // Scroll newest alert into view so users always see feedback
+    try {
+        const alertElement = document.getElementById(alertId);
+        if (alertElement && typeof alertElement.scrollIntoView === 'function') {
+            alertElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    } catch (e) {
+        // Ignore scroll issues – alert is still visible in most layouts
+    }
     
     // Auto-dismiss after 5 seconds
     setTimeout(() => {
@@ -1126,17 +1260,18 @@ async function handleReportForm(event) {
     const submitSpinner = document.getElementById('submitSpinner');
     
     try {
-        // Show loading state
-        submitBtn.disabled = true;
-        submitSpinner.style.display = 'inline-block';
+        // Show loading state (only if button exists)
+        if (submitBtn) submitBtn.disabled = true;
+        if (submitSpinner) submitSpinner.style.display = 'inline-block';
         
         // Get form data
         const formData = {
             title: document.getElementById('itemTitle').value.trim(),
             description: document.getElementById('itemDescription').value.trim(),
             location: document.getElementById('itemLocation').value.trim(),
-            status: document.getElementById('itemStatus').value,
+            status: ITEM_STATUS.FOUND,
             date: document.getElementById('itemDate').value,
+            category: (document.getElementById('itemCategory')?.value || '').trim(),
             contactPhone: document.getElementById('contactPhone').value.trim(),
             contactName: document.getElementById('contactName').value.trim()
         };
@@ -1192,8 +1327,8 @@ async function handleReportForm(event) {
         showAlert('Error submitting form: ' + error.message, 'danger');
     } finally {
         // Hide loading state
-        submitBtn.disabled = false;
-        submitSpinner.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
+        if (submitSpinner) submitSpinner.style.display = 'none';
     }
 }
 
@@ -1267,13 +1402,20 @@ async function handleSignupForm(event) {
     const confirmEl = document.getElementById('confirmPassword');
     const signupBtn = document.getElementById('signupBtn');
     const signupSpinner = document.getElementById('signupSpinner');
-    if (!emailEl || !passwordEl || !confirmEl) return;
+    const nameEl = document.getElementById('signupName');
+    if (!emailEl || !passwordEl || !confirmEl || !nameEl) return;
     
+    const fullName = nameEl.value.trim();
     const email = emailEl.value.trim();
     const password = passwordEl.value;
     const confirmPassword = confirmEl.value;
     
     try {
+        if (!fullName) {
+            showAlert('Please enter your full name.', 'danger');
+            return;
+        }
+
         if (password !== confirmPassword) {
             showAlert('Passwords do not match.', 'danger');
             return;
@@ -1282,7 +1424,16 @@ async function handleSignupForm(event) {
         if (signupBtn) { signupBtn.disabled = true; }
         if (signupSpinner) { signupSpinner.style.display = 'inline-block'; }
         
-        await signUp(email, password);
+        const user = await signUp(email, password);
+
+        // Store the display name on the Firebase Auth profile for later use
+        if (user && typeof user.updateProfile === 'function') {
+            try {
+                await user.updateProfile({ displayName: fullName });
+            } catch (profileError) {
+                console.warn('Failed to update display name:', profileError);
+            }
+        }
         
         setTimeout(() => {
             window.location.href = 'index.html';
@@ -1330,8 +1481,9 @@ async function handleGoogleSignIn() {
 
 // Filter items based on search and status
 function filterItems() {
-    const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+    const searchTerm = document.getElementById('searchInput')?.value.toLowerCase().trim() || '';
     const statusFilter = document.getElementById('statusFilter')?.value || '';
+    const categoryFilter = document.getElementById('categoryFilter')?.value || '';
     
     let filteredItems = items;
     
@@ -1339,13 +1491,20 @@ function filterItems() {
     if (searchTerm) {
         filteredItems = filteredItems.filter(item => 
             (item.itemName && item.itemName.toLowerCase().includes(searchTerm)) ||
-            (item.category && item.category.toLowerCase().includes(searchTerm))
+            (item.category && item.category.toLowerCase().includes(searchTerm)) ||
+            (item.location && item.location.toLowerCase().includes(searchTerm)) ||
+            (item.description && item.description.toLowerCase().includes(searchTerm))
         );
     }
     
     // Filter by status
     if (statusFilter) {
         filteredItems = filteredItems.filter(item => item.status === statusFilter);
+    }
+
+    // Filter by category
+    if (categoryFilter) {
+        filteredItems = filteredItems.filter(item => item.category === categoryFilter);
     }
     
     displayItems(filteredItems);
@@ -1362,6 +1521,7 @@ function openEditModal(item) {
     try {
         // Populate form fields with current item data
         document.getElementById('editItemTitle').value = item.title || '';
+        document.getElementById('editItemCategory').value = item.category || '';
         document.getElementById('editItemStatus').value = item.status || '';
         document.getElementById('editItemDescription').value = item.description || '';
         document.getElementById('editItemLocation').value = item.location || '';
@@ -1402,6 +1562,7 @@ async function handleEditForm() {
         // Get form data
         const formData = {
             title: document.getElementById('editItemTitle').value.trim(),
+            category: (document.getElementById('editItemCategory')?.value || '').trim(),
             description: document.getElementById('editItemDescription').value.trim(),
             location: document.getElementById('editItemLocation').value.trim(),
             status: document.getElementById('editItemStatus').value,
@@ -1464,7 +1625,7 @@ async function markItemResolved() {
         if (resolveBtn) resolveBtn.disabled = true;
 
         await updateItem(currentItemId, {
-            status: 'resolved',
+            status: ITEM_STATUS.RESOLVED,
             resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
@@ -1766,11 +1927,12 @@ function setupCommonEventListeners() {
     // Search and filter inputs
     const searchInput = document.getElementById('searchInput');
     const statusFilter = document.getElementById('statusFilter');
-    
+    const debouncedFilter = debounce(filterItems, 250);
+
     if (searchInput) {
-        searchInput.addEventListener('input', filterItems);
+        searchInput.addEventListener('input', debouncedFilter);
     }
-    
+
     if (statusFilter) {
         statusFilter.addEventListener('change', filterItems);
     }
@@ -1891,8 +2053,24 @@ function setupCommonEventListeners() {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
-    initializePage();
+    try {
+        checkAuth();
+        initializePage();
+    } catch (error) {
+        console.error('Initialization error:', error);
+        showAlert('An unexpected error occurred while loading the app. Please refresh and try again.', 'danger');
+    }
+});
+
+// Global safety nets for uncaught errors and promise rejections
+window.addEventListener('error', (event) => {
+    console.error('Uncaught error:', event.error || event.message);
+    showAlert('Something went wrong. Please try again or refresh the page.', 'danger');
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    showAlert('A network or server error occurred. Please try again.', 'danger');
 });
 
 // Make functions globally available
