@@ -32,12 +32,40 @@ let items = [];
 let currentItemId = null;
 let currentItemData = null;
 let resolvedItems = [];
-let chatItems = [];
-let selectedChatItemId = null;
-let chatMessagesUnsubscribe = null;
-let chatPreselectedItemId = null;
-let chatPageEventsBound = false;
-let chatSearchTerm = '';
+
+// =============================================================================
+// ROLE HELPERS (user / finder / admin)
+// =============================================================================
+
+async function getCurrentUserRole() {
+    if (!currentUser) return 'user';
+
+    try {
+        const token = await currentUser.getIdTokenResult();
+
+        if (token.claims && token.claims.admin === true) {
+            return 'admin';
+        }
+
+        if (token.claims && typeof token.claims.role === 'string') {
+            // Expected values: 'user', 'finder', 'admin' (admin also has admin === true)
+            return token.claims.role;
+        }
+
+        return 'user';
+    } catch (error) {
+        console.error('Error fetching user role:', error);
+        return 'user';
+    }
+}
+
+async function isAdmin() {
+    return (await getCurrentUserRole()) === 'admin';
+}
+
+async function isFinder() {
+    return (await getCurrentUserRole()) === 'finder';
+}
 
 // =============================================================================
 // AUTHENTICATION FUNCTIONS
@@ -67,22 +95,16 @@ function checkAuth() {
         const currentPage = window.location.pathname.split('/').pop();
         console.log('Current page:', currentPage, 'User:', user);
         
-        const authRequiredPages = ['myitems.html', 'report.html', 'chat.html'];
+        const authRequiredPages = ['myitems.html', 'report.html'];
         if (authRequiredPages.includes(currentPage)) {
             if (!user) {
                 console.log('No user, showing auth required');
                 showAuthRequired();
-                if (currentPage === 'chat.html') {
-                    toggleChatLayout(false);
-                    resetChatPanel();
-                }
             } else {
                 console.log('User logged in, hiding auth required');
                 hideAuthRequired();
                 if (currentPage === 'myitems.html') {
                     loadUserItems();
-                } else if (currentPage === 'chat.html') {
-                    initializeChatInterface(true);
                 }
             }
         }
@@ -93,6 +115,7 @@ function checkAuth() {
 function updateAuthUI() {
     const loginLink = document.getElementById('loginLink');
     const logoutLink = document.getElementById('logoutLink');
+    const adminLink = document.getElementById('adminLink');
     
     if (currentUser) {
         if (loginLink) loginLink.style.display = 'none';
@@ -100,6 +123,21 @@ function updateAuthUI() {
     } else {
         if (loginLink) loginLink.style.display = 'block';
         if (logoutLink) logoutLink.style.display = 'none';
+    }
+
+    // Admin link visibility (role-based)
+    if (adminLink) {
+        if (!currentUser) {
+            adminLink.style.display = 'none';
+        } else {
+            currentUser.getIdTokenResult()
+                .then((token) => {
+                    adminLink.style.display = (token.claims && token.claims.admin === true) ? 'block' : 'none';
+                })
+                .catch(() => {
+                    adminLink.style.display = 'none';
+                });
+        }
     }
 }
 
@@ -270,6 +308,20 @@ function handleAuthError(error) {
 // FIRESTORE FUNCTIONS
 // =============================================================================
 
+// Helper: map Firestore doc to a public listing item (no sensitive fields)
+function mapDocToPublicListingItem(doc) {
+    const data = doc.data() || {};
+    return {
+        id: doc.id,
+        // Public-facing fields
+        itemName: data.itemName || data.title || 'Untitled Item',
+        category: data.category || 'Uncategorized',
+        status: data.status || 'available',
+        createdAt: data.createdAt || null,
+        userId: data.userId || null
+    };
+}
+
 // Load all items from Firestore
 async function loadItems() {
     try {
@@ -278,10 +330,7 @@ async function loadItems() {
         const fetchedItems = [];
         
         snapshot.forEach(doc => {
-            fetchedItems.push({
-                id: doc.id,
-                ...doc.data()
-            });
+            fetchedItems.push(mapDocToPublicListingItem(doc));
         });
         
         items = fetchedItems.filter(item => !isResolvedStatus(item.status));
@@ -323,12 +372,9 @@ async function loadUserItems() {
         
         const userItems = [];
         snapshot.forEach(doc => {
-            const itemData = doc.data();
+            const itemData = mapDocToPublicListingItem(doc);
             console.log('Processing item:', doc.id, itemData);
-            userItems.push({
-                id: doc.id,
-                ...itemData
-            });
+            userItems.push(itemData);
         });
         
         items = userItems.filter(item => !isResolvedStatus(item.status));
@@ -515,20 +561,9 @@ function displayItems(itemsToShow) {
 // Create item card HTML
 function createItemCard(item) {
     try {
-        const normalizedStatus = (item.status || '').toLowerCase();
-        let statusClass = 'badge-found';
-        if (normalizedStatus === 'lost') {
-            statusClass = 'badge-lost';
-        } else if (normalizedStatus === 'resolved') {
-            statusClass = 'badge-resolved';
-        }
+        const title = item.itemName || item.title || 'Untitled Item';
+        const category = item.category || 'Uncategorized';
 
-        const imageUrl = item.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image';
-        const isGivenToEnquiry = !!item.givenToEnquiry;
-        const contactLabel = isGivenToEnquiry ? 'Enquiry' : 'Reporter';
-        const displayName = isGivenToEnquiry ? (item.enquiryName || 'Building Enquiry') : (item.contactName || 'Unknown');
-        const displayPhone = isGivenToEnquiry ? (item.enquiryPhone || 'Not provided') : (item.reporterPhone || item.contactPhone || 'No phone');
-        
         // Handle date formatting safely
         let date = 'Unknown date';
         if (item.createdAt) {
@@ -546,41 +581,21 @@ function createItemCard(item) {
             }
         }
         
-        // Handle description safely
-        const description = item.description || 'No description';
-        const shortDescription = description.length > 100 ? description.substring(0, 100) + '...' : description;
-        
         return `
             <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card item-card h-100" onclick="viewItem('${item.id}')">
-                    <div class="position-relative">
-                        <img src="${imageUrl}" class="card-img-top item-image" alt="${item.title || 'Item'}">
-                        <span class="badge ${statusClass} item-status-badge">${item.status || 'Unknown'}</span>
-                    </div>
+                <div class="card item-card h-100">
                     <div class="card-body d-flex flex-column">
-                        <h5 class="card-title">${item.title || 'Untitled Item'}</h5>
-                        <p class="card-text text-muted small">${shortDescription}</p>
-                        <div class="mt-auto">
-                            <div class="row text-muted small mb-2">
-                                <div class="col-6">
-                                    <i class="fas fa-map-marker-alt me-1"></i>
-                                    ${item.location || 'Unknown location'}
-                                </div>
-                                <div class="col-6 text-end">
-                                    <i class="fas fa-calendar me-1"></i>
-                                    ${date}
-                                </div>
-                            </div>
-                            <div class="row text-muted small">
-                                <div class="col-6">
-                                    <i class="fas fa-user me-1"></i>
-                                    <span class="text-uppercase">${contactLabel}</span>: ${displayName}
-                                </div>
-                                <div class="col-6 text-end">
-                                    <i class="fas fa-phone me-1"></i>
-                                    ${displayPhone}
-                                </div>
-                            </div>
+                        <h5 class="card-title mb-2">${title}</h5>
+                        <p class="text-muted small mb-1">
+                            <i class="fas fa-tags me-1"></i>${category}
+                        </p>
+                        <p class="text-muted small mb-3">
+                            <i class="fas fa-calendar me-1"></i>${date}
+                        </p>
+                        <div class="mt-auto d-grid">
+                            <button class="btn btn-primary btn-sm" onclick="viewItem('${item.id}')">
+                                <i class="fas fa-hand-paper me-1"></i>Claim this item
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -727,7 +742,7 @@ async function loadItemDetails() {
 }
 
 // Display item details
-function displayItemDetails(item) {
+async function displayItemDetails(item) {
     const itemDetails = document.getElementById('itemDetails');
     const actionButtons = document.getElementById('actionButtons');
     
@@ -737,70 +752,100 @@ function displayItemDetails(item) {
     currentItemData = item;
     currentItemId = item.id;
     console.log('Item data stored for editing:', currentItemData);
-    
-    // Update item information
-    document.getElementById('itemTitle').textContent = item.title;
-    document.getElementById('itemStatus').textContent = item.status;
-    document.getElementById('itemLocation').textContent = item.location;
+
+    const role = await getCurrentUserRole();
+    const isAdminUser = role === 'admin';
+
+    // Update item information (public fields)
+    const itemTitleEl = document.getElementById('itemTitle');
+    const itemStatusEl = document.getElementById('itemStatus');
+    const itemCategoryEl = document.getElementById('itemCategory');
+
+    if (itemTitleEl) {
+        itemTitleEl.textContent = item.itemName || item.title || 'Untitled Item';
+    }
+
+    if (itemStatusEl) {
+        // Status badge is only meaningful for admins and item owners
+        itemStatusEl.textContent = item.status || 'Unknown';
+        if (!isAdminUser) {
+            itemStatusEl.style.display = 'none';
+        } else {
+            itemStatusEl.style.display = 'inline-block';
+        }
+    }
+
+    if (itemCategoryEl) {
+        itemCategoryEl.textContent = item.category || 'Uncategorized';
+    }
+
     const itemDateEl = document.getElementById('itemDate');
-    if (item.createdAt && typeof item.createdAt.toDate === 'function') {
-        itemDateEl.textContent = formatDate(item.createdAt.toDate());
-    } else if (item.date) {
-        const parsedDate = new Date(item.date);
-        itemDateEl.textContent = isNaN(parsedDate) ? item.date : formatDate(parsedDate);
+    if (itemDateEl) {
+        if (item.createdAt && typeof item.createdAt.toDate === 'function') {
+            itemDateEl.textContent = formatDate(item.createdAt.toDate());
+        } else if (item.date) {
+            const parsedDate = new Date(item.date);
+            itemDateEl.textContent = isNaN(parsedDate) ? item.date : formatDate(parsedDate);
+        } else {
+            itemDateEl.textContent = 'Not available';
+        }
+    }
+
+    const descriptionSection = document.getElementById('descriptionSection');
+    const reporterSection = document.getElementById('reporterSection');
+    const contactSection = document.getElementById('contactSection');
+    const descriptionEl = document.getElementById('itemDescription');
+    const reporterEl = document.getElementById('itemReporter');
+    const claimButtonContainer = document.getElementById('claimButtonContainer');
+
+    if (isAdminUser) {
+        // Admins can view full item details and finder contact
+        if (descriptionSection) descriptionSection.style.display = 'block';
+        if (reporterSection) reporterSection.style.display = 'block';
+        if (contactSection) contactSection.style.display = 'block';
+
+        if (descriptionEl) {
+            descriptionEl.textContent = item.description || 'No description';
+        }
+
+        if (reporterEl) {
+            reporterEl.textContent = item.userEmail || 'Unknown';
+        }
+
+        // Update contact information with building enquiry support
+        const contactHeading = document.getElementById('contactInfoHeading');
+        const contactNameEl = document.getElementById('contactName');
+        const isGivenToEnquiry = !!item.givenToEnquiry;
+
+        if (contactHeading) {
+            contactHeading.textContent = isGivenToEnquiry ? 'Building Enquiry Contact' : 'Reporter Contact';
+        }
+
+        if (contactNameEl) {
+            if (isGivenToEnquiry) {
+                contactNameEl.textContent = item.enquiryName || 'Not provided';
+            } else {
+                contactNameEl.textContent = item.contactName || 'Not provided';
+            }
+        }
+
+        if (claimButtonContainer) {
+            claimButtonContainer.style.display = 'none';
+        }
     } else {
-        itemDateEl.textContent = 'Not available';
-    }
-    document.getElementById('itemDescription').textContent = item.description;
-    document.getElementById('itemReporter').textContent = item.userEmail || 'Unknown';
-    
-    const chatButton = document.getElementById('chatWithReporterBtn');
-    if (chatButton) {
-        chatButton.href = `chat.html?itemId=${item.id}`;
-    }
+        // Normal users see only limited fields and a claim button
+        if (descriptionSection) descriptionSection.style.display = 'none';
+        if (reporterSection) reporterSection.style.display = 'none';
+        if (contactSection) contactSection.style.display = 'none';
 
-    // Update contact information with building enquiry support
-    const contactHeading = document.getElementById('contactInfoHeading');
-    const contactNameEl = document.getElementById('contactName');
-    const contactPhoneEl = document.getElementById('contactPhone');
-    const contactPhoneLink = document.getElementById('contactPhoneLink');
-    const isGivenToEnquiry = !!item.givenToEnquiry;
-
-    let phoneToDisplay = null;
-    if (contactHeading) {
-        contactHeading.textContent = isGivenToEnquiry ? 'Building Enquiry Contact' : 'Reporter Contact';
-    }
-
-    if (isGivenToEnquiry) {
-        contactNameEl.textContent = item.enquiryName || 'Not provided';
-        phoneToDisplay = item.enquiryPhone || null;
-    } else {
-        contactNameEl.textContent = item.contactName || 'Not provided';
-        phoneToDisplay = item.reporterPhone || item.contactPhone || null;
-    }
-
-    contactPhoneEl.textContent = phoneToDisplay || 'Not provided';
-
-    if (phoneToDisplay) {
-        contactPhoneLink.href = `tel:${phoneToDisplay}`;
-        contactPhoneLink.classList.add('text-primary');
-    } else {
-        contactPhoneLink.href = '#';
-        contactPhoneLink.classList.remove('text-primary');
-    }
-    
-    // Update image
-    const imageContainer = document.getElementById('itemImageContainer');
-    const noImageMessage = document.getElementById('noImageMessage');
-    const itemImage = document.getElementById('itemImage');
-    
-    if (item.imageUrl) {
-        itemImage.src = item.imageUrl;
-        imageContainer.style.display = 'block';
-        noImageMessage.style.display = 'none';
-    } else {
-        imageContainer.style.display = 'none';
-        noImageMessage.style.display = 'block';
+        if (claimButtonContainer) {
+            // Only show claim button if viewer is logged in and not the owner
+            if (currentUser && item.userId !== currentUser.uid) {
+                claimButtonContainer.style.display = 'block';
+            } else {
+                claimButtonContainer.style.display = 'none';
+            }
+        }
     }
     
     // Show action buttons if user owns the item
@@ -818,6 +863,188 @@ function displayItemDetails(item) {
     }
     
     itemDetails.style.display = 'block';
+}
+
+// Sensitive fields are still stored in Firestore, but intentionally not rendered
+// in the public item details UI. A future admin panel can use this accessor.
+function getSensitiveItemFieldsForAdmin(item) {
+    return {
+        location: item?.location ?? null,
+        reporterPhone: item?.reporterPhone ?? item?.contactPhone ?? null,
+        imageUrl: item?.imageUrl ?? null
+    };
+}
+
+// =============================================================================
+// CLAIM FUNCTIONS
+// =============================================================================
+
+async function handleClaimItem() {
+    if (!currentUser) {
+        showAlert('Please login to claim this item.', 'warning');
+        return;
+    }
+
+    if (!currentItemId) {
+        showAlert('No item selected to claim.', 'danger');
+        return;
+    }
+
+    try {
+        const role = await getCurrentUserRole();
+        if (role === 'admin') {
+            showAlert('Admins do not need to claim items.', 'info');
+            return;
+        }
+
+        await updateItem(currentItemId, {
+            claimRequestedBy: currentUser.uid,
+            claimRequestedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            claimRequesterEmail: currentUser.email || null
+        });
+
+        showAlert('Your claim has been sent to the admin for review.', 'success');
+    } catch (error) {
+        console.error('Error submitting claim:', error);
+        showAlert('Error submitting claim: ' + error.message, 'danger');
+    }
+}
+
+// New claim flow using a detailed form and subcollection
+function openClaimModal() {
+    if (!currentUser) {
+        showAlert('Please login to claim this item.', 'warning');
+        return;
+    }
+
+    if (!currentItemId) {
+        showAlert('No item selected to claim.', 'danger');
+        return;
+    }
+
+    const modalEl = document.getElementById('claimModal');
+    if (!modalEl) return;
+
+    const claimModal = new bootstrap.Modal(modalEl);
+
+    const nameInput = document.getElementById('claimName');
+    const phoneInput = document.getElementById('claimPhone');
+    if (nameInput && !nameInput.value) {
+        nameInput.value = currentUser.displayName || '';
+    }
+    if (phoneInput && !phoneInput.value && currentUser.phoneNumber) {
+        phoneInput.value = currentUser.phoneNumber;
+    }
+
+    claimModal.show();
+}
+
+async function handleClaimForm(event) {
+    if (event) {
+        event.preventDefault();
+    }
+
+    if (!currentUser) {
+        showAlert('Please login to claim this item.', 'warning');
+        return;
+    }
+
+    if (!currentItemId) {
+        showAlert('No item selected to claim.', 'danger');
+        return;
+    }
+
+    const role = await getCurrentUserRole();
+    if (role === 'admin') {
+        showAlert('Admins do not need to claim items.', 'info');
+        return;
+    }
+
+    const nameInput = document.getElementById('claimName');
+    const phoneInput = document.getElementById('claimPhone');
+    const descInput = document.getElementById('claimDescription');
+    const lostWhereInput = document.getElementById('claimLostWhere');
+    const markInput = document.getElementById('claimIdentifyingMark');
+    const billInput = document.getElementById('claimBillImage');
+    const submitBtn = document.getElementById('submitClaimBtn');
+    const spinner = document.getElementById('claimSpinner');
+
+    if (!nameInput || !phoneInput || !descInput || !lostWhereInput || !markInput || !submitBtn) {
+        showAlert('Claim form is not available. Please reload the page.', 'danger');
+        return;
+    }
+
+    const claimantName = nameInput.value.trim();
+    const claimantPhone = phoneInput.value.trim();
+    const claimDescription = descInput.value.trim();
+    const lostWhere = lostWhereInput.value.trim();
+    const identifyingMark = markInput.value.trim();
+    const billFile = billInput?.files?.[0] || null;
+
+    const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+
+    try {
+        if (!claimantName || !claimantPhone || !claimDescription || !lostWhere || !identifyingMark) {
+            throw new Error('Please fill in all required fields.');
+        }
+
+        if (!phoneRegex.test(claimantPhone)) {
+            throw new Error('Please enter a valid phone number.');
+        }
+
+        submitBtn.disabled = true;
+        if (spinner) spinner.style.display = 'inline-block';
+
+        let billImageUrl = null;
+
+        if (billFile) {
+            try {
+                const storageRef = storage.ref();
+                const billRef = storageRef.child(`claim-bills/${currentItemId}/${currentUser.uid}/${Date.now()}-${billFile.name}`);
+                const snapshot = await billRef.put(billFile);
+                billImageUrl = await snapshot.ref.getDownloadURL();
+            } catch (uploadError) {
+                console.error('Error uploading bill image:', uploadError);
+                // Continue without bill image
+            }
+        }
+
+        const claimData = {
+            itemId: currentItemId,
+            claimantId: currentUser.uid,
+            claimantEmail: currentUser.email || null,
+            claimantName,
+            claimantPhone,
+            claimDescription,
+            lostWhere,
+            identifyingMark,
+            billImageUrl,
+            status: 'pending',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await itemsCollection.doc(currentItemId).collection('claims').add(claimData);
+
+        showAlert('Your claim has been submitted and is pending admin review.', 'success');
+
+        if (billInput) billInput.value = '';
+        descInput.value = '';
+        lostWhereInput.value = '';
+        markInput.value = '';
+
+        const modalEl = document.getElementById('claimModal');
+        const claimModal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+        if (claimModal) {
+            claimModal.hide();
+        }
+    } catch (error) {
+        console.error('Error submitting claim:', error);
+        showAlert('Error submitting claim: ' + error.message, 'danger');
+    } finally {
+        submitBtn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+    }
 }
 
 // Show item not found message
@@ -913,27 +1140,34 @@ async function handleReportForm(event) {
             contactPhone: document.getElementById('contactPhone').value.trim(),
             contactName: document.getElementById('contactName').value.trim()
         };
+        formData.status = 'Found';
 
         formData.reporterPhone = formData.contactPhone;
 
-        // Building enquiry (optional) – from report page
-        const reportEnquiryCheck = document.getElementById('reportGivenToEnquiry');
+        // Building enquiry (required) – from report page
         const reportEnquiryNameEl = document.getElementById('reportEnquiryName');
         const reportEnquiryPhoneEl = document.getElementById('reportEnquiryPhone');
-        const isGivenToEnquiry = reportEnquiryCheck && reportEnquiryCheck.checked;
-        formData.givenToEnquiry = !!isGivenToEnquiry;
-        formData.enquiryName = (isGivenToEnquiry && reportEnquiryNameEl) ? reportEnquiryNameEl.value.trim() || null : null;
-        formData.enquiryPhone = (isGivenToEnquiry && reportEnquiryPhoneEl) ? reportEnquiryPhoneEl.value.trim() || null : null;
+        formData.givenToEnquiry = true;
+        formData.enquiryName = reportEnquiryNameEl ? reportEnquiryNameEl.value.trim() : '';
+        formData.enquiryPhone = reportEnquiryPhoneEl ? reportEnquiryPhoneEl.value.trim() : '';
 
         // Validate form data
         if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
             throw new Error('Please fill in all required fields.');
+        }
+
+        if (!formData.enquiryName || !formData.enquiryPhone) {
+            throw new Error('Please provide the building enquiry desk name and phone number.');
         }
         
         // Validate phone number format (basic validation)
         const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
         if (!phoneRegex.test(formData.contactPhone)) {
             throw new Error('Please enter a valid phone number.');
+        }
+
+        if (!phoneRegex.test(formData.enquiryPhone)) {
+            throw new Error('Please enter a valid enquiry phone number.');
         }
         
         // Add item to Firestore first to get ID
@@ -971,10 +1205,8 @@ function clearForm() {
     if (imagePreview) imagePreview.style.display = 'none';
     const previewImg = document.getElementById('previewImg');
     if (previewImg) previewImg.src = '';
-    const reportEnquiryFields = document.getElementById('reportEnquiryFields');
-    if (reportEnquiryFields) reportEnquiryFields.style.display = 'none';
-    const reportGivenToEnquiry = document.getElementById('reportGivenToEnquiry');
-    if (reportGivenToEnquiry) reportGivenToEnquiry.checked = false;
+    const itemStatus = document.getElementById('itemStatus');
+    if (itemStatus) itemStatus.value = 'Found';
 }
 
 // Handle image preview
@@ -1106,14 +1338,8 @@ function filterItems() {
     // Filter by search term
     if (searchTerm) {
         filteredItems = filteredItems.filter(item => 
-            item.title.toLowerCase().includes(searchTerm) ||
-            item.description.toLowerCase().includes(searchTerm) ||
-            item.location.toLowerCase().includes(searchTerm) ||
-            (item.contactName && item.contactName.toLowerCase().includes(searchTerm)) ||
-            (item.contactPhone && item.contactPhone.includes(searchTerm)) ||
-            (item.reporterPhone && item.reporterPhone.includes(searchTerm)) ||
-            (item.enquiryName && item.enquiryName.toLowerCase().includes(searchTerm)) ||
-            (item.enquiryPhone && item.enquiryPhone.includes(searchTerm))
+            (item.itemName && item.itemName.toLowerCase().includes(searchTerm)) ||
+            (item.category && item.category.toLowerCase().includes(searchTerm))
         );
     }
     
@@ -1123,317 +1349,6 @@ function filterItems() {
     }
     
     displayItems(filteredItems);
-}
-
-// =============================================================================
-// CHAT FUNCTIONS
-// =============================================================================
-
-function toggleChatLayout(show) {
-    const chatLayout = document.getElementById('chatLayout');
-    if (chatLayout) {
-        chatLayout.style.display = show ? '' : 'none';
-    }
-}
-
-function resetChatPanel() {
-    selectedChatItemId = null;
-    cleanupChatSubscription();
-    const chatMessages = document.getElementById('chatMessages');
-    if (chatMessages) chatMessages.innerHTML = '';
-    const chatForm = document.getElementById('chatForm');
-    if (chatForm) chatForm.style.display = 'none';
-    const chatEmptyState = document.getElementById('chatEmptyState');
-    if (chatEmptyState) chatEmptyState.style.display = 'block';
-    const chatTitle = document.getElementById('chatItemTitle');
-    if (chatTitle) chatTitle.textContent = 'Select an item';
-    const chatSubtitle = document.getElementById('chatItemSubtitle');
-    if (chatSubtitle) {
-        chatSubtitle.textContent = 'Choose an item from the list to view its chat.';
-    }
-    const viewBtn = document.getElementById('chatViewItemBtn');
-    if (viewBtn) {
-        viewBtn.classList.add('disabled');
-        viewBtn.setAttribute('aria-disabled', 'true');
-        viewBtn.href = '#';
-    }
-    const loadingEl = document.getElementById('chatMessagesLoading');
-    if (loadingEl) loadingEl.style.display = 'none';
-}
-
-async function initializeChatInterface(forceReload = false) {
-    const chatLayout = document.getElementById('chatLayout');
-    if (!chatLayout) return;
-
-    if (!currentUser) {
-        showAuthRequired();
-        toggleChatLayout(false);
-        showLoading(false);
-        resetChatPanel();
-        return;
-    }
-
-    hideAuthRequired();
-    toggleChatLayout(true);
-
-    if (!chatPageEventsBound) {
-        const searchInput = document.getElementById('chatSearchInput');
-        if (searchInput) {
-            searchInput.addEventListener('input', () => filterChatItems(searchInput.value));
-        }
-        const chatForm = document.getElementById('chatForm');
-        if (chatForm) {
-            chatForm.addEventListener('submit', sendChatMessage);
-        }
-        const params = new URLSearchParams(window.location.search);
-        chatPreselectedItemId = params.get('itemId');
-        chatPageEventsBound = true;
-    }
-
-    if (!chatItems.length || forceReload) {
-        await loadChatItemsForChatPage();
-    } else {
-        renderChatItems(getFilteredChatItems());
-    }
-
-    if (chatPreselectedItemId) {
-        selectChatItem(chatPreselectedItemId);
-        chatPreselectedItemId = null;
-    }
-}
-
-async function loadChatItemsForChatPage() {
-    try {
-        showLoading(true);
-        const snapshot = await itemsCollection.orderBy('createdAt', 'desc').limit(50).get();
-        const fetched = [];
-        snapshot.forEach(doc => {
-            fetched.push({ id: doc.id, ...doc.data() });
-        });
-        chatItems = fetched.filter(item => !isResolvedStatus(item.status));
-        renderChatItems(getFilteredChatItems());
-        if (!chatItems.length) {
-            resetChatPanel();
-        }
-    } catch (error) {
-        console.error('Error loading chat items:', error);
-        showAlert('Error loading chat items: ' + error.message, 'danger');
-        chatItems = [];
-        renderChatItems([]);
-        resetChatPanel();
-    } finally {
-        showLoading(false);
-    }
-}
-
-function getFilteredChatItems() {
-    if (!chatSearchTerm) return chatItems;
-    return chatItems.filter(item => {
-        const search = chatSearchTerm;
-        const fields = [
-            item.title,
-            item.description,
-            item.location,
-            item.contactName,
-            item.userEmail,
-            item.status,
-            item.enquiryName
-        ];
-        if (fields.some(value => value && value.toLowerCase().includes(search))) {
-            return true;
-        }
-        const phones = [item.contactPhone, item.reporterPhone, item.enquiryPhone];
-        return phones.some(value => value && value.includes(search));
-    });
-}
-
-function filterChatItems(term = '') {
-    chatSearchTerm = term.trim().toLowerCase();
-    renderChatItems(getFilteredChatItems());
-}
-
-function renderChatItems(itemsToRender = []) {
-    const container = document.getElementById('chatItemList');
-    if (!container) return;
-    if (!itemsToRender.length) {
-        const message = chatSearchTerm
-            ? 'No items match your search.'
-            : 'No active items available for chat.';
-        container.innerHTML = `<div class="text-center text-muted small py-3">${message}</div>`;
-        return;
-    }
-    container.innerHTML = itemsToRender.map(item => {
-        const isActive = item.id === selectedChatItemId;
-        const safeTitle = escapeHtml(item.title || 'Untitled Item');
-        const safeLocation = escapeHtml(item.location || 'Unknown location');
-        const safeContact = escapeHtml(item.contactName || item.userEmail || 'Reporter');
-        const status = escapeHtml(item.status || 'Unknown');
-        return `
-            <button class="chat-item-button ${isActive ? 'active' : ''}" type="button" onclick="selectChatItem('${item.id}')">
-                <h6 class="mb-1">${safeTitle}</h6>
-                <div class="small">
-                    <i class="fas fa-user me-1"></i>${safeContact}
-                    <span class="ms-2"><i class="fas fa-map-marker-alt me-1"></i>${safeLocation}</span>
-                </div>
-                <div class="small text-uppercase mt-1">${status}</div>
-            </button>
-        `;
-    }).join('');
-}
-
-function selectChatItem(itemId) {
-    if (!currentUser) {
-        showAlert('Please login to chat with reporters.', 'warning');
-        return;
-    }
-    const item = chatItems.find(chatItem => chatItem.id === itemId);
-    if (!item) return;
-    selectedChatItemId = itemId;
-    renderChatItems(getFilteredChatItems());
-    updateChatHeader(item);
-    const chatForm = document.getElementById('chatForm');
-    if (chatForm) chatForm.style.display = 'block';
-    const emptyState = document.getElementById('chatEmptyState');
-    if (emptyState) emptyState.style.display = 'none';
-    const chatMessages = document.getElementById('chatMessages');
-    if (chatMessages) chatMessages.innerHTML = '';
-    subscribeToChatMessages(itemId);
-}
-
-function updateChatHeader(item) {
-    const titleEl = document.getElementById('chatItemTitle');
-    const subtitleEl = document.getElementById('chatItemSubtitle');
-    const viewBtn = document.getElementById('chatViewItemBtn');
-    if (titleEl) titleEl.textContent = item.title || 'Untitled Item';
-    if (subtitleEl) {
-        const reporter = item.userEmail || item.contactName || 'Reporter';
-        subtitleEl.textContent = `${item.status || 'Unknown status'} · Reporter: ${reporter}`;
-    }
-    if (viewBtn) {
-        viewBtn.href = `item.html?id=${item.id}`;
-        viewBtn.classList.remove('disabled');
-        viewBtn.removeAttribute('aria-disabled');
-    }
-}
-
-function subscribeToChatMessages(itemId) {
-    cleanupChatSubscription();
-    const loadingEl = document.getElementById('chatMessagesLoading');
-    if (loadingEl) loadingEl.style.display = 'block';
-    chatMessagesUnsubscribe = itemsCollection
-        .doc(itemId)
-        .collection('chats')
-        .orderBy('createdAt', 'asc')
-        .onSnapshot(
-            (snapshot) => {
-                if (loadingEl) loadingEl.style.display = 'none';
-                const messages = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                renderChatMessages(messages);
-            },
-            (error) => {
-                console.error('Chat listener error:', error);
-                showAlert('Error loading chat messages: ' + error.message, 'danger');
-            }
-        );
-}
-
-function cleanupChatSubscription() {
-    if (chatMessagesUnsubscribe) {
-        chatMessagesUnsubscribe();
-        chatMessagesUnsubscribe = null;
-    }
-}
-
-function renderChatMessages(messages = []) {
-    const container = document.getElementById('chatMessages');
-    if (!container) return;
-    if (!messages.length) {
-        container.innerHTML = '<p class="text-center text-muted mt-3">No messages yet. Start the conversation!</p>';
-        return;
-    }
-    container.innerHTML = messages.map(message => {
-        const isOwn = currentUser && message.senderId === currentUser.uid;
-        const sender = isOwn ? 'You' : (message.senderName || message.senderEmail || 'Unknown');
-        const safeBody = escapeHtml(message.message || '').replace(/\n/g, '<br>');
-        return `
-            <div class="chat-message ${isOwn ? 'chat-message-self' : ''}">
-                <div class="chat-message-meta">
-                    <span>${escapeHtml(sender)}</span>
-                    <span>${formatChatTimestamp(message.createdAt)}</span>
-                </div>
-                <div class="chat-message-body">${safeBody}</div>
-            </div>
-        `;
-    }).join('');
-    container.scrollTop = container.scrollHeight;
-}
-
-function formatChatTimestamp(timestamp) {
-    if (!timestamp) return 'Sending...';
-    let date;
-    if (timestamp.toDate && typeof timestamp.toDate === 'function') {
-        date = timestamp.toDate();
-    } else if (timestamp.seconds) {
-        date = new Date(timestamp.seconds * 1000);
-    } else {
-        date = new Date(timestamp);
-    }
-    return formatDate(date);
-}
-
-function escapeHtml(text = '') {
-    return String(text).replace(/[&<>"']/g, (char) => {
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;'
-        };
-        return map[char] || char;
-    });
-}
-
-async function sendChatMessage(event) {
-    event.preventDefault();
-    if (!currentUser) {
-        showAlert('Please login to send a message.', 'warning');
-        return;
-    }
-    if (!selectedChatItemId) {
-        showAlert('Select an item before sending a message.', 'warning');
-        return;
-    }
-    const chatInput = document.getElementById('chatInput');
-    const spinner = document.getElementById('chatSendSpinner');
-    const sendBtn = document.getElementById('chatSendBtn');
-    if (!chatInput || !sendBtn) return;
-    const messageText = chatInput.value.trim();
-    if (!messageText) return;
-    try {
-        sendBtn.disabled = true;
-        if (spinner) spinner.style.display = 'inline-block';
-        await itemsCollection
-            .doc(selectedChatItemId)
-            .collection('chats')
-            .add({
-                message: messageText,
-                senderId: currentUser.uid,
-                senderEmail: currentUser.email,
-                senderName: currentUser.displayName || currentUser.email,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        chatInput.value = '';
-    } catch (error) {
-        console.error('Error sending chat message:', error);
-        showAlert('Error sending message: ' + error.message, 'danger');
-    } finally {
-        sendBtn.disabled = false;
-        if (spinner) spinner.style.display = 'none';
-    }
 }
 
 // =============================================================================
@@ -1634,6 +1549,101 @@ async function saveEnquiryDetails() {
     }
 }
 
+// =============================================================================
+// BUILDING ENQUIRY (ADMIN-ONLY DESTINATION)
+// =============================================================================
+
+function openBuildingEnquiryModal() {
+    if (!currentUser) {
+        showAlert('You must be logged in to submit a building enquiry.', 'warning');
+        return;
+    }
+
+    if (!currentItemId) {
+        showAlert('No item selected for building enquiry.', 'danger');
+        return;
+    }
+
+    const modalEl = document.getElementById('buildingEnquiryModal');
+    if (!modalEl) return;
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+async function handleBuildingEnquirySubmit() {
+    if (!currentUser || !currentItemId) {
+        showAlert('You must be logged in to submit a building enquiry.', 'warning');
+        return;
+    }
+
+    const role = await getCurrentUserRole();
+    if (role === 'admin') {
+        showAlert('Admins do not need to submit building enquiries.', 'info');
+        return;
+    }
+
+    const buildingNameEl = document.getElementById('buildingName');
+    const floorEl = document.getElementById('buildingFloor');
+    const roomEl = document.getElementById('buildingRoom');
+    const notesEl = document.getElementById('buildingNotes');
+    const submitBtn = document.getElementById('submitBuildingEnquiryBtn');
+    const spinner = document.getElementById('buildingEnquirySpinner');
+
+    if (!buildingNameEl || !floorEl || !roomEl || !submitBtn) {
+        showAlert('Building enquiry form is not available. Please reload the page.', 'danger');
+        return;
+    }
+
+    const buildingName = buildingNameEl.value.trim();
+    const floor = floorEl.value.trim();
+    const roomNumber = roomEl.value.trim();
+    const additionalNotes = (notesEl?.value || '').trim();
+
+    try {
+        if (!buildingName || !floor || !roomNumber) {
+            throw new Error('Please fill in all required building enquiry fields.');
+        }
+
+        submitBtn.disabled = true;
+        if (spinner) spinner.style.display = 'inline-block';
+
+        const enquiryData = {
+            itemId: currentItemId,
+            buildingName,
+            floor,
+            roomNumber,
+            additionalNotes,
+            submittedBy: currentUser.uid,
+            submittedEmail: currentUser.email || null,
+            status: 'pending',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await itemsCollection.doc(currentItemId).collection('building_enquiries').add(enquiryData);
+
+        showAlert('Building enquiry has been submitted to the admin.', 'success');
+
+        buildingNameEl.value = '';
+        floorEl.value = '';
+        roomEl.value = '';
+        if (notesEl) notesEl.value = '';
+
+        const modalEl = document.getElementById('buildingEnquiryModal');
+        const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+        if (modal) {
+            modal.hide();
+        }
+    } catch (error) {
+        console.error('Error submitting building enquiry:', error);
+        showAlert('Error submitting building enquiry: ' + error.message, 'danger');
+    } finally {
+        submitBtn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+    }
+}
+
 // Handle edit image preview
 function handleEditImagePreview(event) {
     const file = event.target.files[0];
@@ -1739,9 +1749,6 @@ function initializePage() {
         case 'login.html':
             // Forms already set up in HTML
             break;
-        case 'chat.html':
-            initializeChatInterface();
-            break;
     }
 }
 
@@ -1781,15 +1788,6 @@ function setupCommonEventListeners() {
         reportForm.addEventListener('submit', handleReportForm);
     }
 
-    // Report page: Building enquiry toggle (show/hide optional fields)
-    const reportGivenToEnquiry = document.getElementById('reportGivenToEnquiry');
-    const reportEnquiryFields = document.getElementById('reportEnquiryFields');
-    if (reportGivenToEnquiry && reportEnquiryFields) {
-        reportGivenToEnquiry.addEventListener('change', function () {
-            reportEnquiryFields.style.display = this.checked ? 'flex' : 'none';
-        });
-    }
-    
     // Image preview
     const imageInput = document.getElementById('itemImage');
     if (imageInput) {
@@ -1854,6 +1852,11 @@ function setupCommonEventListeners() {
     if (saveEnquiryBtn) {
         saveEnquiryBtn.addEventListener('click', saveEnquiryDetails);
     }
+
+    const openBuildingEnquiryBtn = document.getElementById('openBuildingEnquiryBtn');
+    if (openBuildingEnquiryBtn) {
+        openBuildingEnquiryBtn.addEventListener('click', openBuildingEnquiryModal);
+    }
     
     const resolveBtn = document.getElementById('resolveBtn');
     if (resolveBtn) {
@@ -1868,6 +1871,17 @@ function setupCommonEventListeners() {
                 deleteItemWithConfirmation(currentItemId);
             }
         });
+    }
+
+    // Claim button (normal users)
+    const claimBtn = document.getElementById('claimBtn');
+    if (claimBtn) {
+        claimBtn.addEventListener('click', openClaimModal);
+    }
+
+    const submitClaimBtn = document.getElementById('submitClaimBtn');
+    if (submitClaimBtn) {
+        submitClaimBtn.addEventListener('click', handleClaimForm);
     }
 }
 
@@ -1887,7 +1901,6 @@ window.clearForm = clearForm;
 window.deleteItemWithConfirmation = deleteItemWithConfirmation;
 window.openEditModal = openEditModal;
 window.handleEditForm = handleEditForm;
-window.selectChatItem = selectChatItem;
 
 // Test function for debugging
 window.testEdit = function() {

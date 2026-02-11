@@ -5,6 +5,23 @@ rules_version = '2';
 //    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Claim bill uploads: only the claimant can upload to their uid path.
+    match /claim-bills/{itemId}/{uid}/{fileName} {
+      allow write: if isSignedIn() && request.auth.uid == uid;
+      // Only admins can read bills in admin review
+      allow read: if isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // Default deny
     match /{allPaths=**} {
       allow read, write: if false;
     }

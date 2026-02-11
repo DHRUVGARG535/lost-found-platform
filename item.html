@@ -51,8 +51,8 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="chat.html">
-                            <i class="fas fa-comments me-1"></i>Chat
+                        <a class="nav-link" href="admin.html" id="adminLink" style="display:none;">
+                            <i class="fas fa-shield-halved me-1"></i>Admin
                         </a>
                     </li>
                 </ul>
@@ -97,66 +97,46 @@
                             <h2 id="itemTitle" class="mb-2 mb-md-0">Item Title</h2>
                             <span class="badge bg-primary fs-6" id="itemStatus">Status</span>
                         </div>
-                        
-                        <div class="mb-3">
-                            <h5><i class="fas fa-map-marker-alt me-2"></i>Location</h5>
-                            <p id="itemLocation" class="text-muted">Location details</p>
-                        </div>
 
                         <div class="mb-3">
                             <h5><i class="fas fa-calendar me-2"></i>Date</h5>
                             <p id="itemDate" class="text-muted">Date details</p>
                         </div>
 
-                        <div class="mb-3">
+                        <div class="mb-3" id="categorySection">
+                            <h5><i class="fas fa-tags me-2"></i>Category</h5>
+                            <p id="itemCategory" class="text-muted">Category</p>
+                        </div>
+
+                        <div class="mb-3" id="descriptionSection">
                             <h5><i class="fas fa-align-left me-2"></i>Description</h5>
                             <p id="itemDescription">Description details</p>
                         </div>
 
-                        <div class="mb-3">
+                        <div class="mb-3" id="reporterSection">
                             <h5><i class="fas fa-user me-2"></i>Reported by</h5>
                             <p id="itemReporter" class="text-muted">Reporter details</p>
                         </div>
 
-                        <div class="contact-info">
-                            <h5><i class="fas fa-phone me-2"></i><span id="contactInfoHeading">Contact Information</span></h5>
+                        <div class="contact-info" id="contactSection">
+                            <h5><i class="fas fa-user me-2"></i><span id="contactInfoHeading">Contact Information</span></h5>
                             <div class="row">
                                 <div class="col-md-6">
                                     <p class="mb-1"><strong>Name:</strong> <span id="contactName" class="contact-name">Contact name</span></p>
                                 </div>
-                                <div class="col-md-6">
-                                    <p class="mb-1"><strong>Phone:</strong> <a href="tel:" id="contactPhoneLink" class="text-decoration-none">
-                                        <span id="contactPhone" class="contact-phone">Contact phone</span>
-                                    </a></p>
-                                </div>
                             </div>
-                            <div class="mt-3">
-                                <a class="btn btn-outline-primary" id="chatWithReporterBtn" href="chat.html">
-                                    <i class="fas fa-comments me-2"></i>Open Chat About This Item
-                                </a>
-                                <p class="text-muted small mb-0 mt-2">
-                                    Login is required to send messages.
-                                </p>
-                            </div>
+                        </div>
+
+                        <div class="mt-3" id="claimButtonContainer" style="display: none;">
+                            <button class="btn btn-primary w-100" id="claimBtn">
+                                <i class="fas fa-hand-paper me-2"></i>Claim this item
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="col-12 col-lg-4">
-                <div class="card mb-3">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Item Image</h5>
-                        <div id="itemImageContainer">
-                            <img id="itemImage" class="img-fluid rounded" style="max-height: 300px; width: 100%; object-fit: cover;">
-                        </div>
-                        <div id="noImageMessage" class="text-muted mt-3" style="display: none;">
-                            <i class="fas fa-image fa-3x mb-2"></i>
-                            <p>No image available</p>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Action Buttons -->
                 <div class="card" id="actionButtons" style="display: none;">
                     <div class="card-body">
@@ -194,9 +174,12 @@
                                     <input type="tel" class="form-control form-control-sm" id="actionEnquiryPhone" placeholder="+91 9000000000">
                                 </div>
                             </div>
-                            <button class="btn btn-outline-primary btn-sm w-100" id="saveEnquiryBtn">
+                            <button class="btn btn-outline-primary btn-sm w-100 mb-2" id="saveEnquiryBtn">
                                 <span class="spinner-border spinner-border-sm me-2" id="saveEnquirySpinner" style="display: none;"></span>
                                 Save Enquiry Details
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm w-100" id="openBuildingEnquiryBtn">
+                                <i class="fas fa-paper-plane me-1"></i>Submit Building Enquiry to Admin
                             </button>
                         </div>
                     </div>
@@ -210,6 +193,116 @@
             <h4>Item Not Found</h4>
             <p class="text-muted">The item you're looking for doesn't exist or has been removed.</p>
             <a href="index.html" class="btn btn-primary">Back to Home</a>
+        </div>
+    </div>
+
+    <!-- Claim Item Modal -->
+    <div class="modal fade" id="claimModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Claim This Item</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Please provide details that help the admin verify that this item belongs to you.
+                    </p>
+                    <div class="alert alert-warning d-flex align-items-start" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2 mt-1"></i>
+                        <div>
+                            To verify ownership, you must bring a bill or valid proof of purchase to the admin office.
+                        </div>
+                    </div>
+                    <form id="claimForm">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="claimName" class="form-label">Your Name *</label>
+                                <input type="text" class="form-control" id="claimName" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="claimPhone" class="form-label">Your Phone Number *</label>
+                                <input type="tel" class="form-control" id="claimPhone" placeholder="+91 9876543210" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="claimDescription" class="form-label">Describe the Item / Proof of Ownership *</label>
+                            <textarea class="form-control" id="claimDescription" rows="3" required></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="claimLostWhere" class="form-label">Where Did You Lose It? *</label>
+                                <input type="text" class="form-control" id="claimLostWhere" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="claimIdentifyingMark" class="form-label">Any Identifying Mark *</label>
+                                <input type="text" class="form-control" id="claimIdentifyingMark" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="claimBillImage" class="form-label">Upload Bill / Receipt Image (Optional but Recommended)</label>
+                            <input type="file" class="form-control" id="claimBillImage" accept="image/*">
+                            <div class="form-text">
+                                Upload a clear photo of the purchase bill, receipt, or any document proving ownership.
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitClaimBtn">
+                        <span class="spinner-border spinner-border-sm me-2" id="claimSpinner" style="display: none;"></span>
+                        Submit Claim
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Building Enquiry Modal -->
+    <div class="modal fade" id="buildingEnquiryModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Submit Building Enquiry</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Share where this item has been handed over so the admin can coordinate with the building authority.
+                    </p>
+                    <form id="buildingEnquiryForm">
+                        <div class="mb-3">
+                            <label for="buildingName" class="form-label">Building Name *</label>
+                            <input type="text" class="form-control" id="buildingName" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="buildingFloor" class="form-label">Floor *</label>
+                                <input type="text" class="form-control" id="buildingFloor" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="buildingRoom" class="form-label">Room Number *</label>
+                                <input type="text" class="form-control" id="buildingRoom" required>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="buildingNotes" class="form-label">Additional Notes</label>
+                            <textarea class="form-control" id="buildingNotes" rows="3" placeholder="Any helpful instructions for the admin"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitBuildingEnquiryBtn">
+                        <span class="spinner-border spinner-border-sm me-2" id="buildingEnquirySpinner" style="display: none;"></span>
+                        Submit Enquiry
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
