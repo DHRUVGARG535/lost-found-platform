@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +9,22 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
+    <script>
+        // Auth UI hydration: prevent navbar flicker before Firebase loads
+        (function () {
+            try {
+                var raw = localStorage.getItem('lf_ui_auth_v1');
+                var s = raw ? JSON.parse(raw) : null;
+                var root = document.documentElement;
+                if (!root) return;
+                root.classList.add('lf-auth-hydrated');
+                if (s && s.isLoggedIn) root.classList.add('lf-logged-in');
+                if (s && s.isAdmin) root.classList.add('lf-admin');
+            } catch (e) { }
+        })();
+    </script>
 </head>
+
 <body>
     <!-- Alert Container -->
     <div id="alertContainer" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
@@ -36,13 +52,18 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="report.html">
+                        <a class="nav-link" href="report.html" id="navReportLink">
                             <i class="fas fa-plus-circle me-1"></i>Report Item
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="myitems.html">
+                        <a class="nav-link" href="myitems.html" id="navMyItemsLink">
                             <i class="fas fa-user me-1"></i>My Items
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="myclaims.html" id="navMyClaimsLink">
+                            <i class="fas fa-hand-paper me-1"></i>My Claims
                         </a>
                     </li>
                     <li class="nav-item">
@@ -119,10 +140,12 @@
                         </div>
 
                         <div class="contact-info" id="contactSection">
-                            <h5><i class="fas fa-user me-2"></i><span id="contactInfoHeading">Contact Information</span></h5>
+                            <h5><i class="fas fa-user me-2"></i><span id="contactInfoHeading">Contact Information</span>
+                            </h5>
                             <div class="row">
                                 <div class="col-md-6">
-                                    <p class="mb-1"><strong>Name:</strong> <span id="contactName" class="contact-name">Contact name</span></p>
+                                    <p class="mb-1"><strong>Name:</strong> <span id="contactName"
+                                            class="contact-name">Contact name</span></p>
                                 </div>
                             </div>
                         </div>
@@ -150,36 +173,6 @@
                             </button>
                             <button class="btn btn-outline-danger" id="deleteBtn">
                                 <i class="fas fa-trash me-2"></i>Delete Item
-                            </button>
-                        </div>
-                        <div class="mt-4 pt-3 border-top" id="enquiryActionSection">
-                            <div class="d-flex align-items-center mb-2">
-                                <i class="fas fa-building text-primary me-2"></i>
-                                <h6 class="mb-0">Building Enquiry</h6>
-                            </div>
-                            <p class="text-muted small mb-3">
-                                Let everyone know if the item has been handed over to a building enquiry desk.
-                            </p>
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" role="switch" id="actionGivenToEnquiry">
-                                <label class="form-check-label" for="actionGivenToEnquiry">Item given to Building Enquiry</label>
-                            </div>
-                            <div id="actionEnquiryFields" style="display: none;">
-                                <div class="mb-2">
-                                    <label for="actionEnquiryName" class="form-label small">Enquiry Desk Name *</label>
-                                    <input type="text" class="form-control form-control-sm" id="actionEnquiryName" placeholder="Main Enquiry Desk">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="actionEnquiryPhone" class="form-label small">Enquiry Phone Number *</label>
-                                    <input type="tel" class="form-control form-control-sm" id="actionEnquiryPhone" placeholder="+91 9000000000">
-                                </div>
-                            </div>
-                            <button class="btn btn-outline-primary btn-sm w-100 mb-2" id="saveEnquiryBtn">
-                                <span class="spinner-border spinner-border-sm me-2" id="saveEnquirySpinner" style="display: none;"></span>
-                                Save Enquiry Details
-                            </button>
-                            <button class="btn btn-outline-secondary btn-sm w-100" id="openBuildingEnquiryBtn">
-                                <i class="fas fa-paper-plane me-1"></i>Submit Building Enquiry to Admin
                             </button>
                         </div>
                     </div>
@@ -222,12 +215,14 @@
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="claimPhone" class="form-label">Your Phone Number *</label>
-                                <input type="tel" class="form-control" id="claimPhone" placeholder="+91 9876543210" required>
+                                <input type="tel" class="form-control" id="claimPhone" placeholder="+91 9876543210"
+                                    required>
                             </div>
                         </div>
 
                         <div class="mb-3">
-                            <label for="claimDescription" class="form-label">Describe the Item / Proof of Ownership *</label>
+                            <label for="claimDescription" class="form-label">Describe the Item / Proof of Ownership
+                                *</label>
                             <textarea class="form-control" id="claimDescription" rows="3" required></textarea>
                         </div>
 
@@ -243,7 +238,8 @@
                         </div>
 
                         <div class="mb-3">
-                            <label for="claimBillImage" class="form-label">Upload Bill / Receipt Image (Optional but Recommended)</label>
+                            <label for="claimBillImage" class="form-label">Upload Bill / Receipt Image (Optional but
+                                Recommended)</label>
                             <input type="file" class="form-control" id="claimBillImage" accept="image/*">
                             <div class="form-text">
                                 Upload a clear photo of the purchase bill, receipt, or any document proving ownership.
@@ -254,52 +250,9 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="submitClaimBtn">
-                        <span class="spinner-border spinner-border-sm me-2" id="claimSpinner" style="display: none;"></span>
+                        <span class="spinner-border spinner-border-sm me-2" id="claimSpinner"
+                            style="display: none;"></span>
                         Submit Claim
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Building Enquiry Modal -->
-    <div class="modal fade" id="buildingEnquiryModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Submit Building Enquiry</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-3">
-                        Share where this item has been handed over so the admin can coordinate with the building authority.
-                    </p>
-                    <form id="buildingEnquiryForm">
-                        <div class="mb-3">
-                            <label for="buildingName" class="form-label">Building Name *</label>
-                            <input type="text" class="form-control" id="buildingName" required>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="buildingFloor" class="form-label">Floor *</label>
-                                <input type="text" class="form-control" id="buildingFloor" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="buildingRoom" class="form-label">Room Number *</label>
-                                <input type="text" class="form-control" id="buildingRoom" required>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="buildingNotes" class="form-label">Additional Notes</label>
-                            <textarea class="form-control" id="buildingNotes" rows="3" placeholder="Any helpful instructions for the admin"></textarea>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="submitBuildingEnquiryBtn">
-                        <span class="spinner-border spinner-border-sm me-2" id="buildingEnquirySpinner" style="display: none;"></span>
-                        Submit Enquiry
                     </button>
                 </div>
             </div>
@@ -346,52 +299,56 @@
                                 </select>
                             </div>
 
-                        <div class="mb-3">
-                            <label for="editItemDescription" class="form-label">Description *</label>
-                            <textarea class="form-control" id="editItemDescription" rows="3" required></textarea>
-                        </div>
+                            <div class="mb-3">
+                                <label for="editItemDescription" class="form-label">Description *</label>
+                                <textarea class="form-control" id="editItemDescription" rows="3" required></textarea>
+                            </div>
 
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="editItemLocation" class="form-label">Location *</label>
-                                <input type="text" class="form-control" id="editItemLocation" required>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="editItemLocation" class="form-label">Location *</label>
+                                    <input type="text" class="form-control" id="editItemLocation" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="editItemDate" class="form-label">Date *</label>
+                                    <input type="date" class="form-control" id="editItemDate" required>
+                                </div>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="editItemDate" class="form-label">Date *</label>
-                                <input type="date" class="form-control" id="editItemDate" required>
-                            </div>
-                        </div>
 
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="editContactPhone" class="form-label">Contact Phone Number *</label>
-                                <input type="tel" class="form-control" id="editContactPhone" placeholder="+91 9876543210" required>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="editContactPhone" class="form-label">Contact Phone Number *</label>
+                                    <input type="tel" class="form-control" id="editContactPhone"
+                                        placeholder="+91 9876543210" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="editContactName" class="form-label">Contact Name *</label>
+                                    <input type="text" class="form-control" id="editContactName" placeholder="Your name"
+                                        required>
+                                </div>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="editContactName" class="form-label">Contact Name *</label>
-                                <input type="text" class="form-control" id="editContactName" placeholder="Your name" required>
-                            </div>
-                        </div>
 
-                        <div class="mb-3">
-                            <label for="editItemImage" class="form-label">Item Image</label>
-                            <input type="file" class="form-control" id="editItemImage" accept="image/*">
-                            <div class="form-text">Upload a new image to replace the current one (optional)</div>
-                        </div>
-
-                        <!-- Image Preview -->
-                        <div class="mb-3" id="editImagePreview" style="display: none;">
-                            <label class="form-label">New Image Preview</label>
-                            <div class="text-center">
-                                <img id="editPreviewImg" class="img-thumbnail" style="max-width: 300px; max-height: 300px;">
+                            <div class="mb-3">
+                                <label for="editItemImage" class="form-label">Item Image</label>
+                                <input type="file" class="form-control" id="editItemImage" accept="image/*">
+                                <div class="form-text">Upload a new image to replace the current one (optional)</div>
                             </div>
-                        </div>
+
+                            <!-- Image Preview -->
+                            <div class="mb-3" id="editImagePreview" style="display: none;">
+                                <label class="form-label">New Image Preview</label>
+                                <div class="text-center">
+                                    <img id="editPreviewImg" class="img-thumbnail"
+                                        style="max-width: 300px; max-height: 300px;">
+                                </div>
+                            </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="saveEditBtn">
-                        <span class="spinner-border spinner-border-sm me-2" id="editSpinner" style="display: none;"></span>
+                        <span class="spinner-border spinner-border-sm me-2" id="editSpinner"
+                            style="display: none;"></span>
                         Save Changes
                     </button>
                 </div>
@@ -423,12 +380,12 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
+
     <!-- Custom Scripts -->
     <script src="script.js"></script>
 </body>
-</html>
 
+</html>

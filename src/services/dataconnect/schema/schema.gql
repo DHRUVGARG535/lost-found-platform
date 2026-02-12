@@ -1,0 +1,59 @@
+type User @table {
+  displayName: String!
+  email: String!
+  createdAt: Timestamp!
+  photoUrl: String
+  campusAffiliation: String
+}
+
+type Category @table {
+  name: String!
+  description: String
+}
+
+type Location @table {
+  name: String!
+  description: String
+  building: String
+  roomNumber: String
+}
+
+type LostItem @table {
+  title: String!
+  description: String!
+  lostDate: Date!
+  createdAt: Timestamp!
+  isResolved: Boolean!
+  imageUrl: String
+  contactMethod: String
+  resolutionDate: Date
+  user: User
+  category: Category
+  location: Location
+}
+
+type FoundItem @table {
+  title: String!
+  description: String!
+  foundDate: Date!
+  createdAt: Timestamp!
+  isResolved: Boolean!
+  imageUrl: String
+  contactMethod: String
+  resolutionDate: Date
+  returnInstructions: String
+  user: User
+  category: Category
+  location: Location
+}
+
+type Message @table {
+  content: String!
+  createdAt: Timestamp!
+  isRead: Boolean!
+  subject: String
+  sender: User
+  receiver: User
+  lostItem: LostItem
+  foundItem: FoundItem
+}

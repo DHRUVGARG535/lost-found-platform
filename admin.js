@@ -93,6 +93,8 @@ async function requireAdminOrDeny() {
     }
 }
 
+const adminItemsCache = {}; // Cache for item details (images, etc.)
+
 async function adminLoadItems() {
     const tbody = document.getElementById('adminItemsTbody');
     if (!tbody) return;
@@ -103,14 +105,19 @@ async function adminLoadItems() {
 
     snapshot.forEach((doc) => {
         const d = doc.data() || {};
+        // Cache item data for claims usage
+        adminItemsCache[doc.id] = d;
+
         const itemName = d.itemName || d.title || 'Untitled Item';
         const category = d.category || 'Uncategorized';
         const status = d.status || 'available';
         const normalizedStatus = String(status).toLowerCase();
         const statusClass = adminStatusBadgeClass(status);
         const createdAt = adminFormatDate(d.createdAt);
+        const finderName = d.contactName || d.reporterName || d.userEmail || d.reporterEmail || 'Unknown';
         const finderId = d.userId || d.createdBy || '—';
         const photoUrlRaw = adminResolveImageUrl(d);
+        const location = d.location || d.foundLocation || d.lostLocation || 'Unknown location';
         const photoCellContent = photoUrlRaw
             ? `<img src="${escapeHtml(photoUrlRaw)}" alt="Item photo for ${escapeHtml(itemName)}" class="admin-item-thumb rounded">`
             : `<div class="admin-item-thumb-placeholder text-muted"><i class="fas fa-image"></i></div>`;
@@ -122,20 +129,22 @@ async function adminLoadItems() {
                 <td class="admin-item-thumb-cell">${photoCellContent}</td>
                 <td>
                     <div class="fw-semibold">${escapeHtml(itemName)}</div>
-                    <div class="text-muted small">ID: ${escapeHtml(doc.id)}</div>
+                    <div class="text-muted small" title="ID: ${escapeHtml(doc.id)}"><i class="fas fa-map-marker-alt me-1"></i> ${escapeHtml(location)}</div>
                 </td>
                 <td>${escapeHtml(category)}</td>
                 <td><span class="badge ${statusClass} text-uppercase">${escapeHtml(status)}</span></td>
                 <td class="text-muted small">${escapeHtml(createdAt)}</td>
-                <td class="text-muted small">${escapeHtml(finderId)}</td>
+                <td class="text-muted small" title="ID: ${escapeHtml(finderId)}">${escapeHtml(finderName)}</td>
                 <td class="text-end">
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="adminOpenItemDetails('${doc.id}')">
-                        View
-                    </button>
-                    ${canMarkReturned ? `
-                    <button class="btn btn-sm btn-outline-success ms-2" onclick="adminMarkReturned('${doc.id}')">
-                        Mark Returned
-                    </button>` : ''}
+                    <div class="d-flex justify-content-end gap-2 admin-item-actions">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="adminOpenItemDetails('${doc.id}')">
+                            View
+                        </button>
+                        ${canMarkReturned ? `
+                        <button class="btn btn-sm btn-outline-success btn-mark-returned" onclick="adminMarkReturned('${doc.id}')">
+                            <span style="position: relative; z-index: 5;">Mark Returned</span>
+                        </button>` : ''}
+                    </div>
                 </td>
             </tr>
         `);
@@ -149,8 +158,8 @@ async function adminLoadClaims() {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    // Pull claims across all items
-    const snapshot = await db.collectionGroup('claims').orderBy('createdAt', 'desc').limit(300).get();
+    // Fetch from root 'claims' collection
+    const snapshot = await db.collection('claims').orderBy('createdAt', 'desc').limit(300).get();
     const rows = [];
 
     snapshot.forEach((doc) => {
@@ -158,75 +167,160 @@ async function adminLoadClaims() {
         const status = d.status || 'pending';
         const submittedAt = adminFormatDate(d.createdAt);
         const itemId = d.itemId || '—';
-        const claimant = d.claimantName || d.claimantEmail || d.claimantId || '—';
-        const phone = d.claimantPhone || '—';
+        const claimant = d.userName || 'Unknown';
+        const phone = d.userPhone || '—';
+
+        // Try to get image from claim doc, fallback to item cache
+        let photoUrlRaw = adminResolveImageUrl(d) || adminResolveImageUrl({ imageUrl: d.itemImage });
+
+        // Fallback: Check global cache if missing from claim
+        if (!photoUrlRaw && itemId && adminItemsCache[itemId]) {
+            photoUrlRaw = adminResolveImageUrl(adminItemsCache[itemId]);
+        }
+
+        const photoCellContent = photoUrlRaw
+            ? `<img src="${escapeHtml(photoUrlRaw)}" alt="Item" class="admin-item-thumb rounded">`
+            : `<div class="admin-item-thumb-placeholder text-muted"><i class="fas fa-image"></i></div>`;
+
+        const isPending = (String(status).toLowerCase() === 'pending');
+        const actionsHtml = isPending
+            ? `<div class="d-flex justify-content-end gap-2 flex-wrap">
+                    <button class="btn btn-sm btn-outline-primary" onclick="adminOpenClaimDetails('${doc.id}')">View</button>
+                    <button class="btn btn-sm btn-outline-success" onclick="adminApproveClaim('${doc.ref.path}', '${escapeHtml(itemId)}')">Approve</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="adminRejectClaim('${doc.ref.path}')">Reject</button>
+               </div>`
+            : `<div class="d-flex justify-content-end"><button class="btn btn-sm btn-outline-primary" onclick="adminOpenClaimDetails('${doc.id}')">View</button></div>`;
 
         rows.push(`
             <tr>
+                <td class="admin-item-thumb-cell">${photoCellContent}</td>
                 <td>
-                    <div class="fw-semibold">${escapeHtml(itemId)}</div>
-                    <div class="text-muted small">Claim: ${escapeHtml(doc.id)}</div>
+                    <div class="fw-semibold">${escapeHtml(d.itemName || 'Unknown Item')}</div>
+                    <div class="text-muted small" title="Item ID: ${escapeHtml(itemId)}"><i class="fas fa-map-marker-alt me-1"></i> ${escapeHtml(d.lostLocation || 'Location not provided')}</div>
                 </td>
                 <td>${escapeHtml(claimant)}</td>
                 <td class="text-muted small">${escapeHtml(phone)}</td>
                 <td><span class="badge ${status === 'approved' ? 'bg-success' : status === 'rejected' ? 'bg-danger' : 'bg-warning'} text-uppercase">${escapeHtml(status)}</span></td>
                 <td class="text-muted small">${escapeHtml(submittedAt)}</td>
-                <td class="text-end">
-                    <button class="btn btn-sm btn-outline-success" onclick="adminApproveClaim('${doc.ref.path}', '${escapeHtml(itemId)}')">Approve</button>
-                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="adminRejectClaim('${doc.ref.path}')">Reject</button>
-                </td>
+                <td class="text-end">${actionsHtml}</td>
             </tr>
         `);
     });
 
-    tbody.innerHTML = rows.join('') || `<tr><td colspan="6" class="text-center text-muted py-4">No claims found.</td></tr>`;
+    tbody.innerHTML = rows.join('') || `<tr><td colspan="7" class="text-center text-muted py-4">No claims found.</td></tr>`;
 }
 
-async function adminLoadBuildingEnquiries() {
-    const tbody = document.getElementById('adminEnquiriesTbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
+// ... (existing code) ...
 
-    const snapshot = await db.collectionGroup('building_enquiries').orderBy('createdAt', 'desc').limit(300).get();
-    const rows = [];
+async function adminOpenClaimDetails(claimId) {
+    const modalEl = document.getElementById('adminClaimModal');
+    if (!modalEl) return;
 
-    snapshot.forEach((doc) => {
-        const d = doc.data() || {};
-        const itemId = d.itemId || '—';
-        const buildingName = d.buildingName || '—';
-        const floor = d.floor || '—';
-        const roomNumber = d.roomNumber || '—';
-        const notes = d.additionalNotes || '—';
-        const submittedAt = adminFormatDate(d.createdAt);
+    // Reset Modal
+    document.getElementById('adminClaimModalId').textContent = 'ID: ' + claimId;
+    document.getElementById('adminClaimModalName').textContent = '—';
+    document.getElementById('adminClaimModalEmail').textContent = '—';
+    document.getElementById('adminClaimModalPhone').textContent = '—';
+    document.getElementById('adminClaimModalItemName').textContent = '—';
+    document.getElementById('adminClaimModalStatus').textContent = '—';
+    document.getElementById('adminClaimModalDate').textContent = '—';
+    document.getElementById('adminClaimModalLocation').textContent = '—';
+    document.getElementById('adminClaimModalDescription').textContent = '—';
+    document.getElementById('adminClaimModalMarks').textContent = '—';
 
-        rows.push(`
-            <tr>
-                <td>
-                    <div class="fw-semibold">${escapeHtml(itemId)}</div>
-                    <div class="text-muted small">Enquiry: ${escapeHtml(doc.id)}</div>
-                </td>
-                <td>${escapeHtml(buildingName)}</td>
-                <td>${escapeHtml(floor)}</td>
-                <td>${escapeHtml(roomNumber)}</td>
-                <td class="text-muted small" style="max-width: 420px;">${escapeHtml(notes)}</td>
-                <td class="text-muted small">${escapeHtml(submittedAt)}</td>
-            </tr>
-        `);
-    });
+    const billContainer = document.getElementById('adminClaimModalBillContainer');
+    const billImg = document.getElementById('adminClaimModalBill');
+    const billLink = document.getElementById('adminClaimModalBillLink');
+    if (billContainer) billContainer.style.display = 'none';
+    if (billImg) { billImg.src = ''; billImg.alt = 'Loading...'; }
 
-    tbody.innerHTML = rows.join('') || `<tr><td colspan="6" class="text-center text-muted py-4">No building enquiries found.</td></tr>`;
+    const spinner = document.getElementById('adminClaimModalSpinner');
+    const body = document.getElementById('adminClaimModalBody');
+    const errorEl = document.getElementById('adminClaimModalError');
+    if (spinner) spinner.style.display = 'block';
+    if (body) body.style.display = 'none';
+    if (errorEl) errorEl.classList.add('d-none');
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    try {
+        const doc = await db.collection('claims').doc(claimId).get();
+        if (!doc.exists) {
+            throw new Error('Claim not found');
+        }
+
+        const data = doc.data();
+
+        document.getElementById('adminClaimModalName').textContent = data.userName || 'Unknown';
+        document.getElementById('adminClaimModalEmail').textContent = data.userEmail || ''; // Don't show ID
+        document.getElementById('adminClaimModalPhone').textContent = data.userPhone || '—';
+        document.getElementById('adminClaimModalItemName').textContent = data.itemName || '—';
+
+        const statusEl = document.getElementById('adminClaimModalStatus');
+        if (statusEl) {
+            statusEl.textContent = (data.status || 'pending').toUpperCase();
+            statusEl.className = `badge ${adminStatusBadgeClass(data.status)} text-uppercase`;
+        }
+
+        document.getElementById('adminClaimModalDate').textContent = adminFormatDate(data.createdAt);
+        document.getElementById('adminClaimModalLocation').textContent = data.lostLocation || '—';
+        document.getElementById('adminClaimModalDescription').textContent = data.proofDescription || '—';
+        document.getElementById('adminClaimModalMarks').textContent = data.identifyingMark || '—';
+
+        // Bill Image
+        if (data.billImageURL) {
+            if (billContainer) billContainer.style.display = 'block';
+            if (billImg) billImg.src = data.billImageURL;
+            if (billLink) billLink.href = data.billImageURL;
+        }
+
+        // Actions
+        const actionsContainer = document.getElementById('adminClaimModalActions');
+        if (actionsContainer) {
+            const modalStatus = (data.status || 'pending').toLowerCase();
+            if (modalStatus === 'pending') {
+                actionsContainer.innerHTML = `
+                    <button class="btn btn-success" onclick="adminApproveClaim('${doc.ref.path}', '${escapeHtml(data.itemId)}'); bootstrap.Modal.getInstance(document.getElementById('adminClaimModal')).hide();">Approve</button>
+                    <button class="btn btn-danger ms-2" onclick="adminRejectClaim('${doc.ref.path}'); bootstrap.Modal.getInstance(document.getElementById('adminClaimModal')).hide();">Reject</button>
+                `;
+            } else {
+                actionsContainer.innerHTML = '';
+            }
+        }
+
+        if (spinner) spinner.style.display = 'none';
+        if (body) body.style.display = 'block';
+
+    } catch (error) {
+        console.error('Error loading claim details:', error);
+        if (spinner) spinner.style.display = 'none';
+        if (errorEl) {
+            errorEl.textContent = 'Failed to load details: ' + error.message;
+            errorEl.classList.remove('d-none');
+        }
+    }
 }
+
+window.adminOpenClaimDetails = adminOpenClaimDetails;
 
 async function adminRefreshAll() {
     adminShowLoading(true);
-    await Promise.allSettled([adminLoadItems(), adminLoadClaims(), adminLoadBuildingEnquiries()]);
+    await Promise.allSettled([adminLoadItems(), adminLoadClaims()]);
     adminShowLoading(false);
 }
 
 // Actions
+// Actions
 async function adminApproveClaim(claimPath, itemId) {
+    if (!confirm('Are you sure you want to APPROVE this claim? This will mark the item as claimed and reject other pending claims for this item.')) {
+        return;
+    }
+
     try {
         const claimRef = db.doc(claimPath);
+
+        // 1. Approve this claim
         await claimRef.update({
             status: 'approved',
             reviewedBy: currentUser.uid,
@@ -234,16 +328,43 @@ async function adminApproveClaim(claimPath, itemId) {
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
+        // 2. Update Item status to 'claimed' & reject other claims
         if (itemId && itemId !== '—') {
             await itemsCollection.doc(itemId).update({
                 status: 'claimed',
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+
+            // Reject other PENDING claims for this item
+            const otherClaimsSnapshot = await db.collection('claims')
+                .where('itemId', '==', itemId)
+                .where('status', '==', 'pending')
+                .get();
+
+            const batch = db.batch();
+            let batchCount = 0;
+
+            otherClaimsSnapshot.forEach(doc => {
+                if (doc.ref.path !== claimRef.path) {
+                    batch.update(doc.ref, {
+                        status: 'rejected',
+                        rejectionReason: 'Item claimed by another user',
+                        reviewedBy: currentUser.uid,
+                        reviewedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    batchCount++;
+                }
+            });
+
+            if (batchCount > 0) {
+                await batch.commit();
+                console.log(`Auto-rejected ${batchCount} other pending claims for item ${itemId}`);
+            }
         }
 
-        showAlert('Claim approved.', 'success');
+        showAlert('Claim approved. Item marked as claimed.', 'success');
         await adminLoadClaims();
-        await adminLoadItems();
+        await adminLoadItems(); // Update items table too
     } catch (e) {
         console.error('Approve claim failed:', e);
         showAlert('Failed to approve claim: ' + e.message, 'danger');
@@ -251,6 +372,10 @@ async function adminApproveClaim(claimPath, itemId) {
 }
 
 async function adminRejectClaim(claimPath) {
+    if (!confirm('Are you sure you want to REJECT this claim?')) {
+        return;
+    }
+
     try {
         const claimRef = db.doc(claimPath);
         await claimRef.update({
@@ -261,6 +386,7 @@ async function adminRejectClaim(claimPath) {
         });
         showAlert('Claim rejected.', 'warning');
         await adminLoadClaims();
+        await adminLoadItems(); // Refresh Items tab so status stays correct (reject does not set item to claimed)
     } catch (e) {
         console.error('Reject claim failed:', e);
         showAlert('Failed to reject claim: ' + e.message, 'danger');

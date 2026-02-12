@@ -1,4 +1,3 @@
-
 /* Global Styles */
 :root {
     /* Modern Color Palette */
@@ -8,7 +7,7 @@
     --warning-gradient: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%);
     --danger-gradient: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
     --dark-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-    
+
     /* Modern Colors */
     --primary: #667eea;
     --primary-dark: #5a6fd8;
@@ -20,12 +19,12 @@
     --dark: #1e3c72;
     --light: #f8f9fa;
     --white: #ffffff;
-    
+
     /* Typography */
     --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-secondary: 'Poppins', sans-serif;
     --font-mono: 'Fira Code', monospace;
-    
+
     /* Spacing & Sizing */
     --border-radius-sm: 8px;
     --border-radius-md: 12px;
@@ -37,14 +36,14 @@
     --spacing-lg: 1.5rem;
     --spacing-xl: 2rem;
     --spacing-xxl: 3rem;
-    
+
     /* Shadows */
     --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
     --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
     --shadow-glow: 0 0 20px rgba(102, 126, 234, 0.3);
-    
+
     /* Transitions */
     --transition-fast: 0.15s ease;
     --transition-normal: 0.3s ease;
@@ -59,6 +58,60 @@ body {
     background: linear-gradient(135deg, #f8f9fb 0%, #e9ecef 100%);
     min-height: 100vh;
     color: #2c3e50;
+}
+
+/* =============================================================================
+   AUTH UI HYDRATION (prevents navbar flicker on page switch)
+   - A tiny <head> script sets classes on <html> from localStorage
+   - Firebase auth then syncs the real state and updates the cache
+   ============================================================================= */
+html:not(.lf-auth-hydrated) #loginLink,
+html:not(.lf-auth-hydrated) #logoutLink,
+html:not(.lf-auth-hydrated) #adminLink,
+html:not(.lf-auth-hydrated) #navReportLink,
+html:not(.lf-auth-hydrated) #navMyItemsLink,
+html:not(.lf-auth-hydrated) #navMyClaimsLink {
+    visibility: hidden !important; /* avoid 1-2s wrong-state flash */
+}
+
+/* Logged out */
+html.lf-auth-hydrated:not(.lf-logged-in) #logoutLink {
+    display: none !important;
+}
+html.lf-auth-hydrated:not(.lf-logged-in) #loginLink {
+    display: block !important;
+    visibility: visible !important;
+}
+
+/* Logged in */
+html.lf-auth-hydrated.lf-logged-in #loginLink {
+    display: none !important;
+}
+html.lf-auth-hydrated.lf-logged-in #logoutLink {
+    display: block !important;
+    visibility: visible !important;
+}
+
+/* Admin link */
+html.lf-auth-hydrated.lf-admin #adminLink {
+    display: block !important;
+    visibility: visible !important;
+}
+html.lf-auth-hydrated:not(.lf-admin) #adminLink {
+    display: none !important;
+}
+
+/* Hide Report/My Items/My Claims for admins (matches JS behavior) */
+html.lf-auth-hydrated.lf-admin #navReportLink,
+html.lf-auth-hydrated.lf-admin #navMyItemsLink,
+html.lf-auth-hydrated.lf-admin #navMyClaimsLink {
+    display: none !important;
+}
+html.lf-auth-hydrated:not(.lf-admin) #navReportLink,
+html.lf-auth-hydrated:not(.lf-admin) #navMyItemsLink,
+html.lf-auth-hydrated:not(.lf-admin) #navMyClaimsLink {
+    display: block !important;
+    visibility: visible !important;
 }
 
 /* Custom Navbar Styles */
@@ -131,9 +184,19 @@ body {
 }
 
 @keyframes shine {
-    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); opacity: 0; }
-    50% { opacity: 1; }
-    100% { transform: translateX(100%) translateY(100%) rotate(45deg); opacity: 0; }
+    0% {
+        transform: translateX(-100%) translateY(-100%) rotate(45deg);
+        opacity: 0;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateX(100%) translateY(100%) rotate(45deg);
+        opacity: 0;
+    }
 }
 
 .college-logo:hover {
@@ -222,30 +285,30 @@ body {
     .navbar-brand {
         font-size: 1.1rem;
     }
-    
+
     .college-logo {
         width: 40px;
         height: 40px;
         font-size: 1.2rem;
     }
-    
+
     .college-name {
         font-size: 1.2rem;
     }
-    
+
     .app-name {
         font-size: 0.8rem;
     }
-    
+
     .navbar-toggler {
         border: none;
         padding: 0.25rem 0.5rem;
     }
-    
+
     .navbar-toggler:focus {
         box-shadow: none;
     }
-    
+
     .navbar-collapse {
         margin-top: 1rem;
         padding-top: 1rem;
@@ -325,7 +388,7 @@ body {
 .hero-section h1 {
     font-weight: 700;
     font-family: var(--font-secondary);
-    text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     margin-bottom: 1.5rem;
     animation: fadeInUp 0.8s ease-out;
 }
@@ -346,6 +409,7 @@ body {
         opacity: 0;
         transform: translateY(30px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -554,8 +618,17 @@ body {
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.7; transform: scale(1.2); }
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: scale(1.2);
+    }
 }
 
 .history-card {
@@ -583,7 +656,8 @@ body {
 }
 
 /* Form Styles */
-.form-control, .form-select {
+.form-control,
+.form-select {
     border: 2px solid rgba(102, 126, 234, 0.1);
     border-radius: var(--border-radius-md);
     padding: 0.875rem 1rem;
@@ -592,7 +666,8 @@ body {
     background: var(--white);
 }
 
-.form-control:focus, .form-select:focus {
+.form-control:focus,
+.form-select:focus {
     border-color: var(--primary);
     box-shadow: var(--shadow-glow);
     transform: translateY(-1px);
@@ -600,7 +675,8 @@ body {
     background: rgba(102, 126, 234, 0.02);
 }
 
-.form-control:hover, .form-select:hover {
+.form-control:hover,
+.form-select:hover {
     border-color: rgba(102, 126, 234, 0.3);
 }
 
@@ -639,7 +715,7 @@ body {
     transition: var(--transition-normal);
 }
 
-.input-group .form-control:focus + .input-group-text {
+.input-group .form-control:focus+.input-group-text {
     background: linear-gradient(135deg, var(--primary-dark) 0%, #6a4190 100%);
     transform: translateX(2px);
 }
@@ -676,14 +752,14 @@ body {
     position: relative;
 }
 
-.form-floating > .form-control,
-.form-floating > .form-select {
+.form-floating>.form-control,
+.form-floating>.form-select {
     padding: 1rem 0.75rem;
     height: calc(3.5rem + 2px);
     line-height: 1.25;
 }
 
-.form-floating > label {
+.form-floating>label {
     position: absolute;
     top: 0;
     left: 0;
@@ -696,18 +772,18 @@ body {
     color: #6c757d;
 }
 
-.form-floating > .form-control:focus ~ label,
-.form-floating > .form-control:not(:placeholder-shown) ~ label,
-.form-floating > .form-select ~ label {
+.form-floating>.form-control:focus~label,
+.form-floating>.form-control:not(:placeholder-shown)~label,
+.form-floating>.form-select~label {
     transform: scale(0.85) translateY(-0.5rem) translateX(0.15rem);
     color: var(--primary);
     background: var(--white);
     padding: 0 0.25rem;
 }
 
-.form-floating > .form-control:focus ~ label::after,
-.form-floating > .form-control:not(:placeholder-shown) ~ label::after,
-.form-floating > .form-select ~ label::after {
+.form-floating>.form-control:focus~label::after,
+.form-floating>.form-control:not(:placeholder-shown)~label::after,
+.form-floating>.form-select~label::after {
     position: absolute;
     inset: 1rem 0.375rem;
     z-index: -1;
@@ -933,24 +1009,29 @@ body {
     overflow: visible;
     box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15) !important;
 }
+
 .btn-google:hover {
     background: #f8f9fa !important;
     color: #202124 !important;
     border-color: #dadce0 !important;
     box-shadow: 0 1px 3px 0 rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15) !important;
 }
+
 .btn-google:active {
     background: #f1f3f4 !important;
     box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3) !important;
 }
+
 .btn-google:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
 .btn-google .fab.fa-google {
     color: #4285f4;
     font-size: 1.1em;
 }
+
 .btn-google:hover .fab.fa-google {
     color: #1967d2;
 }
@@ -1105,7 +1186,7 @@ body {
     color: var(--accent);
 }
 
-.breadcrumb-item + .breadcrumb-item::before {
+.breadcrumb-item+.breadcrumb-item::before {
     content: "›";
     color: rgba(255, 255, 255, 0.5);
     font-weight: 700;
@@ -1269,25 +1350,25 @@ footer {
     .navbar-brand {
         font-size: 1.2rem;
     }
-    
+
     .college-logo {
         width: 35px;
         height: 35px;
         font-size: 1.1rem;
     }
-    
+
     .college-name {
         font-size: 1.1rem;
     }
-    
+
     .app-name {
         font-size: 0.8rem;
     }
-    
+
     .hero-section h1 {
         font-size: 2.5rem;
     }
-    
+
     .hero-section p {
         font-size: 1.1rem;
     }
@@ -1298,95 +1379,97 @@ footer {
         padding-left: 15px;
         padding-right: 15px;
     }
-    
+
     .hero-section {
         min-height: 200px;
         text-align: center;
         padding: 2rem 0;
     }
-    
+
     .hero-section h1 {
         font-size: 2rem;
         margin-bottom: 1rem;
     }
-    
+
     .hero-section p {
         font-size: 1rem;
         margin-bottom: 1.5rem;
     }
-    
+
     .item-image {
         height: 180px;
     }
-    
+
     .card-body {
         padding: 1rem;
     }
-    
+
     .card-title {
         font-size: 1.1rem;
     }
-    
+
     .card-text {
         font-size: 0.9rem;
     }
-    
+
     /* Mobile navigation improvements */
     .navbar-nav {
         text-align: center;
         margin-top: 1rem;
     }
-    
+
     .navbar-nav .nav-link {
         padding: 0.75rem 1rem;
         margin: 0.25rem 0;
         border-radius: 8px;
     }
-    
+
     /* Mobile form improvements */
-    .form-control, .form-select {
-        font-size: 16px; /* Prevents zoom on iOS */
+    .form-control,
+    .form-select {
+        font-size: 16px;
+        /* Prevents zoom on iOS */
         padding: 0.75rem;
     }
-    
+
     .btn {
         padding: 0.75rem 1.5rem;
         font-size: 1rem;
     }
-    
+
     /* Mobile modal improvements */
     .modal-dialog {
         margin: 1rem;
         max-width: calc(100% - 2rem);
     }
-    
+
     .modal-body {
         padding: 1rem;
     }
-    
+
     /* Mobile contact info */
     .contact-info {
         padding: 0.75rem;
         margin: 0.75rem 0;
     }
-    
+
     .contact-info .row {
         margin-bottom: 0.5rem;
     }
-    
+
     /* Mobile item cards */
     .item-card {
         margin-bottom: 1rem;
     }
-    
+
     .item-card .card-body {
         padding: 0.75rem;
     }
-    
+
     .item-card .row {
         margin-bottom: 0.5rem;
     }
-    
+
     .item-card .row:last-child {
         margin-bottom: 0;
     }
@@ -1397,142 +1480,142 @@ footer {
         padding-left: 10px;
         padding-right: 10px;
     }
-    
+
     .hero-section {
         min-height: 180px;
         padding: 1.5rem 0;
     }
-    
+
     .hero-section h1 {
         font-size: 1.75rem;
         margin-bottom: 0.75rem;
     }
-    
+
     .hero-section p {
         font-size: 0.95rem;
         margin-bottom: 1rem;
     }
-    
+
     .btn-lg {
         padding: 0.75rem 1.25rem;
         font-size: 0.95rem;
     }
-    
+
     .item-image {
         height: 150px;
     }
-    
+
     .card-body {
         padding: 0.75rem;
     }
-    
+
     .card-title {
         font-size: 1rem;
         margin-bottom: 0.5rem;
     }
-    
+
     .card-text {
         font-size: 0.85rem;
         margin-bottom: 0.75rem;
     }
-    
+
     /* Mobile navbar */
     .navbar-brand {
         font-size: 1rem;
     }
-    
+
     .college-logo {
         width: 30px;
         height: 30px;
         font-size: 1rem;
     }
-    
+
     .college-name {
         font-size: 1rem;
     }
-    
+
     .app-name {
         font-size: 0.75rem;
     }
-    
+
     /* Mobile form spacing */
     .mb-3 {
         margin-bottom: 1rem !important;
     }
-    
+
     .mb-4 {
         margin-bottom: 1.25rem !important;
     }
-    
+
     .mb-5 {
         margin-bottom: 1.5rem !important;
     }
-    
+
     /* Mobile buttons */
     .btn {
         padding: 0.6rem 1.2rem;
         font-size: 0.9rem;
         margin-bottom: 0.5rem;
     }
-    
+
     .btn-group-vertical .btn {
         margin-bottom: 0.25rem;
     }
-    
+
     /* Mobile modal */
     .modal-dialog {
         margin: 0.5rem;
         max-width: calc(100% - 1rem);
     }
-    
+
     .modal-header {
         padding: 0.75rem 1rem;
     }
-    
+
     .modal-body {
         padding: 0.75rem;
     }
-    
+
     .modal-footer {
         padding: 0.75rem 1rem;
     }
-    
+
     /* Mobile contact info */
     .contact-info {
         padding: 0.5rem;
         margin: 0.5rem 0;
     }
-    
+
     .contact-info h5 {
         font-size: 1rem;
         margin-bottom: 0.5rem;
     }
-    
+
     .contact-info p {
         font-size: 0.85rem;
         margin-bottom: 0.25rem;
     }
-    
+
     /* Mobile item details */
     .item-details .row {
         margin-bottom: 1rem;
     }
-    
+
     .item-details .col-md-8,
     .item-details .col-md-4 {
         margin-bottom: 1rem;
     }
-    
+
     /* Mobile search and filter */
     .input-group {
         margin-bottom: 1rem;
     }
-    
+
     .form-control {
         font-size: 16px;
         padding: 0.6rem 0.75rem;
     }
-    
+
     .form-select {
         font-size: 16px;
         padding: 0.6rem 0.75rem;
@@ -1544,32 +1627,32 @@ footer {
         padding-left: 8px;
         padding-right: 8px;
     }
-    
+
     .hero-section h1 {
         font-size: 1.5rem;
     }
-    
+
     .hero-section p {
         font-size: 0.9rem;
     }
-    
+
     .btn-lg {
         padding: 0.6rem 1rem;
         font-size: 0.9rem;
     }
-    
+
     .card-body {
         padding: 0.5rem;
     }
-    
+
     .card-title {
         font-size: 0.95rem;
     }
-    
+
     .card-text {
         font-size: 0.8rem;
     }
-    
+
     .item-image {
         height: 120px;
     }
@@ -1585,6 +1668,7 @@ footer {
         opacity: 0;
         transform: translateY(20px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -1599,6 +1683,7 @@ footer {
     from {
         transform: translateX(-100%);
     }
+
     to {
         transform: translateX(0);
     }
@@ -1606,6 +1691,7 @@ footer {
 
 /* Mobile-specific improvements */
 @media (max-width: 768px) {
+
     /* Better touch targets */
     .btn {
         min-height: 48px;
@@ -1615,7 +1701,7 @@ footer {
         touch-action: manipulation;
         -webkit-tap-highlight-color: transparent;
     }
-    
+
     .nav-link {
         min-height: 48px;
         display: flex;
@@ -1624,15 +1710,16 @@ footer {
         touch-action: manipulation;
         -webkit-tap-highlight-color: transparent;
     }
-    
+
     /* Improved spacing */
     .container {
         padding-left: 1rem;
         padding-right: 1rem;
     }
-    
+
     /* Better form spacing and touch interactions */
-    .form-control, .form-select {
+    .form-control,
+    .form-select {
         margin-bottom: 1.25rem;
         font-size: 16px;
         padding: 1rem 0.875rem;
@@ -1641,45 +1728,48 @@ footer {
         -webkit-appearance: none;
         -webkit-tap-highlight-color: transparent;
     }
-    
-    .form-control:focus, .form-select:focus {
+
+    .form-control:focus,
+    .form-select:focus {
         transform: scale(1.02);
         box-shadow: var(--shadow-glow);
     }
-    
+
     /* Card improvements with mobile hover states */
-    .card, .item-card {
+    .card,
+    .item-card {
         margin-bottom: 1.25rem;
         border-radius: var(--border-radius-lg);
         transition: var(--transition-fast);
     }
-    
-    .card:active, .item-card:active {
+
+    .card:active,
+    .item-card:active {
         transform: scale(0.98);
         box-shadow: var(--shadow-sm);
     }
-    
+
     .card-body {
         padding: 1.25rem;
     }
-    
+
     .item-image {
         border-radius: var(--border-radius-md);
         height: 180px;
     }
-    
+
     /* Modal improvements */
     .modal-dialog {
         margin: 0.5rem;
         max-width: calc(100vw - 1rem);
         border-radius: var(--border-radius-lg);
     }
-    
+
     .modal-content {
         border-radius: var(--border-radius-lg);
         overflow: hidden;
     }
-    
+
     /* Contact info mobile styling */
     .contact-info {
         border-radius: var(--border-radius-md);
@@ -1688,15 +1778,15 @@ footer {
         background: var(--light);
         border: 1px solid rgba(0, 0, 0, 0.05);
     }
-    
+
     .contact-info .row {
         margin-bottom: 0.875rem;
     }
-    
+
     .contact-info .row:last-child {
         margin-bottom: 0;
     }
-    
+
     /* Mobile navigation improvements */
     .navbar-collapse {
         background: rgba(30, 60, 114, 0.95);
@@ -1706,38 +1796,39 @@ footer {
         padding: 1rem;
         box-shadow: var(--shadow-lg);
     }
-    
+
     .navbar-nav {
         margin: 0;
-    } 
+    }
+
     .navbar-nav .nav-item {
         margin-bottom: 0.5rem;
     }
-    
+
     .navbar-nav .nav-item:last-child {
         margin-bottom: 0;
     }
-    
+
     /* Hero section mobile */
     .hero-section {
         min-height: 280px;
         padding: 2rem 0;
     }
-    
+
     .hero-section h1 {
         font-size: 2rem;
         margin-bottom: 1.5rem;
     }
-    
+
     /* Search and filter mobile */
     .input-group {
         margin-bottom: 1rem;
     }
-    
+
     .input-group .form-control {
         margin-bottom: 0;
     }
-    
+
     /* Item cards mobile specific */
     .item-status-badge {
         top: 8px;
@@ -1745,27 +1836,27 @@ footer {
         padding: 0.375rem 0.75rem;
         font-size: 0.7rem;
     }
-    
+
     /* Better mobile scrolling */
     * {
         -webkit-overflow-scrolling: touch;
     }
-    
+
     /* Prevent horizontal scroll */
     body {
         overflow-x: hidden;
     }
-    
+
     /* Touch-friendly hover states */
     .item-card:hover,
     .btn:hover {
         transform: none;
     }
-    
+
     .item-card:active {
         transform: scale(0.98);
     }
-    
+
     .btn:active {
         transform: translateY(1px);
     }
@@ -1808,7 +1899,7 @@ footer {
     border: none;
 }
 
-.form-control:focus + .input-group-text {
+.form-control:focus+.input-group-text {
     background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
 }
 
@@ -1997,6 +2088,25 @@ footer {
     transform: rotate(90deg);
 }
 
+/* Admin claims table */
+.admin-claims-table .admin-item-thumb-cell {
+    width: 80px;
+}
+
+.admin-claims-table td,
+.admin-claims-table th {
+    vertical-align: middle;
+}
+
+/* Admin table action buttons */
+.admin-item-actions {
+    flex-wrap: wrap;
+}
+
+.admin-item-actions .btn {
+    min-width: 110px;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;
@@ -2019,3 +2129,27 @@ footer {
 
 
 
+
+/* Mark Returned Button Styling */
+.btn-mark-returned {
+    transition: all 0.3s ease;
+    position: relative;
+    font-weight: 600;
+    z-index: 1;
+}
+
+.btn-mark-returned:hover {
+    background-color: #198754 !important;
+    color: #ffffff !important;
+    border-color: #198754 !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(25, 135, 84, 0.3);
+}
+
+.btn-mark-returned:hover span {
+    color: #ffffff !important;
+}
+
+.btn-mark-returned:active {
+    transform: translateY(0);
+}

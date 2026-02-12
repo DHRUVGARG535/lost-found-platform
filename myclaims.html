@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Items - GEU Lost & Found</title>
+    <title>My Claims - GEU Lost & Found</title>
     <!-- Bootstrap 5 CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -54,12 +54,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="myitems.html" id="navMyItemsLink">
+                        <a class="nav-link" href="myitems.html" id="navMyItemsLink">
                             <i class="fas fa-user me-1"></i>My Items
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="myclaims.html" id="navMyClaimsLink">
+                        <a class="nav-link active" href="myclaims.html" id="navMyClaimsLink">
                             <i class="fas fa-hand-paper me-1"></i>My Claims
                         </a>
                     </li>
@@ -95,88 +95,26 @@
 
     <!-- Main Content -->
     <div class="container my-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2><i class="fas fa-user me-2"></i>My Items</h2>
-            <a href="report.html" class="btn btn-primary">
-                <i class="fas fa-plus me-2"></i>Report New Item
-            </a>
-        </div>
+        <h2 class="mb-2"><i class="fas fa-hand-paper me-2"></i>My Claims</h2>
+        <p class="text-muted mb-4">Items you have claimed. Status: Pending, Accepted, or Rejected.</p>
 
         <!-- Authentication Check -->
         <div id="authRequired" class="alert alert-warning" style="display: none;">
             <i class="fas fa-exclamation-triangle me-2"></i>
-            Please <a href="login.html">login</a> to view your items.
+            Please <a href="login.html">login</a> to view your claims.
         </div>
 
-        <!-- Filter Section -->
-        <div class="row g-3 mb-4" id="filterSection" style="display: none;">
-            <div class="col-12 col-md-4">
-                <label for="searchInput" class="form-label small text-muted mb-1 d-block">Search</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-search"></i></span>
-                    <input type="text" class="form-control" id="searchInput"
-                        placeholder="Search by title, category, or location">
-                </div>
+        <!-- Claims Content (shown when logged in) -->
+        <div id="claimsContentSection" style="display: none;">
+            <div class="text-center py-3" id="claimsLoadingSpinner" style="display: none;">
+                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
             </div>
-            <div class="col-6 col-md-4">
-                <label for="statusFilter" class="form-label small text-muted mb-1 d-block">Filter by status</label>
-                <select class="form-select" id="statusFilter">
-                    <option value="">All My Items</option>
-                    <option value="returned">Returned Items</option>
-                    <option value="Found">Found Items</option>
-                </select>
+            <div class="row" id="myClaimsContainer">
+                <!-- Claims list rendered by script.js -->
             </div>
-            <div class="col-6 col-md-4">
-                <label for="categoryFilter" class="form-label small text-muted mb-1 d-block">Filter by category</label>
-                <select class="form-select" id="categoryFilter">
-                    <option value="">All Categories</option>
-                    <option value="Electronics">Electronics</option>
-                    <option value="Documents">Documents</option>
-                    <option value="ID Card">ID Card</option>
-                    <option value="Clothing">Clothing</option>
-                    <option value="Accessories">Accessories</option>
-                    <option value="Books & Stationery">Books & Stationery</option>
-                    <option value="Others">Others</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Loading Spinner -->
-        <div class="text-center" id="loadingSpinner">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-        </div>
-
-        <!-- Items Grid -->
-        <div class="row" id="itemsContainer">
-            <!-- Items will be dynamically loaded here -->
-        </div>
-
-        <!-- No Items Message -->
-        <div class="text-center py-5" id="noItemsMessage" style="display: none;">
-            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-            <h4 class="text-muted">No items found</h4>
-            <p class="text-muted">You haven't reported any items yet. <a href="report.html"
-                    class="btn btn-primary mt-3">Report your first item</a></p>
-        </div>
-    </div>
-
-    <!-- Delete Confirmation Modal -->
-    <div class="modal fade" id="deleteModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirm Delete</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Are you sure you want to delete this item? This action cannot be undone.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
-                </div>
+            <div class="text-center py-4" id="noClaimsMessage" style="display: none;">
+                <i class="fas fa-folder-open fa-2x text-muted mb-2"></i>
+                <p class="text-muted mb-0">You haven't submitted any claims yet.</p>
             </div>
         </div>
     </div>

@@ -28,16 +28,24 @@ service cloud.firestore {
                             || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // Claim requests: users can create, only admins can review/update
+    // Old sub-collection claims (keeping for legacy data if needed)
     match /lost_items/{itemId}/claims/{claimId} {
-      // Any authenticated user can submit a claim request
       allow create: if isSignedIn();
-
-      // Only admins can read/update claim status
       allow read, update: if isAdmin();
-
-      // No one deletes claims from the client
       allow delete: if false;
+    }
+
+    // NEW Root-level Claims Collection
+    match /claims/{claimId} {
+      // Authenticated users can create claims
+      allow create: if isSignedIn();
+      
+      // Users can see their own claims; Admins can see all
+      allow read: if isSignedIn() 
+                  && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Only admins can update status or delete
+      allow update, delete: if isAdmin();
     }
 
     // Building enquiries: submitted by finders, visible only to admins

@@ -28,6 +28,46 @@ const itemsCollection = db.collection('lost_items');
 // CONSTANTS & HELPERS
 // =============================================================================
 
+// =============================================================================
+// AUTH UI HYDRATION (prevents navbar flicker on navigation)
+// =============================================================================
+const AUTH_UI_CACHE_KEY = 'lf_ui_auth_v1';
+
+function readCachedAuthUiState() {
+    try {
+        const raw = window.localStorage.getItem(AUTH_UI_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        return { isLoggedIn: !!parsed.isLoggedIn, isAdmin: !!parsed.isAdmin };
+    } catch {
+        return null;
+    }
+}
+
+function writeCachedAuthUiState(next) {
+    try {
+        window.localStorage.setItem(AUTH_UI_CACHE_KEY, JSON.stringify({
+            isLoggedIn: !!next?.isLoggedIn,
+            isAdmin: !!next?.isAdmin,
+            updatedAt: Date.now()
+        }));
+    } catch {
+        // ignore
+    }
+}
+
+function applyAuthUiClasses(state) {
+    const root = document.documentElement;
+    if (!root) return;
+    root.classList.add('lf-auth-hydrated');
+    root.classList.toggle('lf-logged-in', !!state?.isLoggedIn);
+    root.classList.toggle('lf-admin', !!state?.isAdmin);
+}
+
+// Apply cached state early (CSS uses these classes)
+applyAuthUiClasses(readCachedAuthUiState());
+
 // Centralized item statuses for consistency
 const ITEM_STATUS = {
     LOST: 'Lost',
@@ -68,6 +108,7 @@ let items = [];
 let currentItemId = null;
 let currentItemData = null;
 let resolvedItems = [];
+let isSigningOut = false;
 
 // =============================================================================
 // ROLE HELPERS (user / finder / admin)
@@ -126,12 +167,12 @@ function checkAuth() {
     auth.onAuthStateChanged((user) => {
         currentUser = user;
         updateAuthUI();
-        
+
         // Load appropriate content based on page
         const currentPage = window.location.pathname.split('/').pop();
         console.log('Current page:', currentPage, 'User:', user);
-        
-        const authRequiredPages = ['myitems.html', 'report.html'];
+
+        const authRequiredPages = ['myitems.html', 'report.html', 'myclaims.html'];
         if (authRequiredPages.includes(currentPage)) {
             if (!user) {
                 console.log('No user, showing auth required');
@@ -141,6 +182,8 @@ function checkAuth() {
                 hideAuthRequired();
                 if (currentPage === 'myitems.html') {
                     loadUserItems();
+                } else if (currentPage === 'myclaims.html') {
+                    loadMyClaims();
                 }
             }
         }
@@ -154,10 +197,14 @@ function updateAuthUI() {
     const adminLink = document.getElementById('adminLink');
     const welcomeBanner = document.getElementById('welcomeBanner');
     const welcomeNameEl = document.getElementById('welcomeName');
-    
+
     if (currentUser) {
         if (loginLink) loginLink.style.display = 'none';
         if (logoutLink) logoutLink.style.display = 'block';
+        // Apply cached role immediately (prevents admin link flicker)
+        const cached = readCachedAuthUiState();
+        applyAuthUiClasses({ isLoggedIn: true, isAdmin: !!cached?.isAdmin });
+        writeCachedAuthUiState({ isLoggedIn: true, isAdmin: !!cached?.isAdmin });
 
         // Show friendly welcome message on pages that support it (index)
         if (welcomeBanner && welcomeNameEl) {
@@ -170,6 +217,8 @@ function updateAuthUI() {
     } else {
         if (loginLink) loginLink.style.display = 'block';
         if (logoutLink) logoutLink.style.display = 'none';
+        applyAuthUiClasses({ isLoggedIn: false, isAdmin: false });
+        writeCachedAuthUiState({ isLoggedIn: false, isAdmin: false });
 
         if (welcomeBanner && welcomeNameEl) {
             welcomeBanner.style.display = 'none';
@@ -177,19 +226,42 @@ function updateAuthUI() {
         }
     }
 
-    // Admin link visibility (role-based)
-    if (adminLink) {
-        if (!currentUser) {
-            adminLink.style.display = 'none';
-        } else {
-            currentUser.getIdTokenResult()
-                .then((token) => {
-                    adminLink.style.display = (token.claims && token.claims.admin === true) ? 'block' : 'none';
-                })
-                .catch(() => {
-                    adminLink.style.display = 'none';
-                });
-        }
+    // Admin link visibility and hiding user-specific links for admins
+    if (currentUser) {
+        currentUser.getIdTokenResult()
+            .then((token) => {
+                const isAdmin = token.claims && token.claims.admin === true;
+
+                // Show/Hide Admin Link if it exists
+                if (adminLink) {
+                    adminLink.style.display = isAdmin ? 'block' : 'none';
+                }
+
+                applyAuthUiClasses({ isLoggedIn: true, isAdmin });
+                writeCachedAuthUiState({ isLoggedIn: true, isAdmin });
+
+                // Hide Report/My Items/My Claims for admins to declutter
+                const reportLink = document.getElementById('navReportLink');
+                const myItemsLink = document.getElementById('navMyItemsLink');
+                const myClaimsLink = document.getElementById('navMyClaimsLink');
+                if (isAdmin) {
+                    if (reportLink) reportLink.style.display = 'none';
+                    if (myItemsLink) myItemsLink.style.display = 'none';
+                    if (myClaimsLink) myClaimsLink.style.display = 'none';
+                } else {
+                    if (reportLink) reportLink.style.display = 'block';
+                    if (myItemsLink) myItemsLink.style.display = 'block';
+                    if (myClaimsLink) myClaimsLink.style.display = 'block';
+                }
+            })
+            .catch((err) => {
+                console.error('Error getting token result:', err);
+                if (adminLink) adminLink.style.display = 'none';
+                applyAuthUiClasses({ isLoggedIn: true, isAdmin: false });
+                writeCachedAuthUiState({ isLoggedIn: true, isAdmin: false });
+            });
+    } else {
+        if (adminLink) adminLink.style.display = 'none';
     }
 }
 
@@ -201,19 +273,21 @@ function showAuthRequired() {
     const loadingSpinner = document.getElementById('loadingSpinner');
     const itemsContainer = document.getElementById('itemsContainer');
     const noItemsMessage = document.getElementById('noItemsMessage');
-    
+
     console.log('Showing auth required:', {
         authRequired: !!authRequired,
         form: !!form,
         filterSection: !!filterSection
     });
-    
+
     if (authRequired) authRequired.style.display = 'block';
     if (form) form.style.display = 'none';
     if (filterSection) filterSection.style.display = 'none';
     if (loadingSpinner) loadingSpinner.style.display = 'none';
     if (itemsContainer) itemsContainer.innerHTML = '';
     if (noItemsMessage) noItemsMessage.style.display = 'none';
+    const claimsContentSection = document.getElementById('claimsContentSection');
+    if (claimsContentSection) claimsContentSection.style.display = 'none';
 }
 
 // Hide authentication required message
@@ -221,11 +295,13 @@ function hideAuthRequired() {
     const authRequired = document.getElementById('authRequired');
     const form = document.getElementById('reportForm');
     const filterSection = document.getElementById('filterSection');
-    
+
     if (authRequired) authRequired.style.display = 'none';
     if (form) form.style.display = 'block';
     if (filterSection) filterSection.style.display = 'block';
-    
+    const claimsContentSection = document.getElementById('claimsContentSection');
+    if (claimsContentSection) claimsContentSection.style.display = 'block';
+
     console.log('Auth required hidden, form shown');
 }
 
@@ -256,11 +332,28 @@ async function signIn(email, password) {
 // Sign out function
 async function signOut() {
     try {
+        if (isSigningOut) {
+            return;
+        }
+        isSigningOut = true;
+
+        // Update cached UI state immediately to avoid flicker during redirect
+        writeCachedAuthUiState({ isLoggedIn: false, isAdmin: false });
+        applyAuthUiClasses({ isLoggedIn: false, isAdmin: false });
+
         await auth.signOut();
-        showAlert('Logged out successfully!', 'success');
-        window.location.href = 'index.html';
+
+        // Persist a one-time flag so the next page (login) can show a success toast
+        try {
+            window.sessionStorage.setItem('lf_logout_success', '1');
+        } catch (storageError) {
+            console.warn('Unable to persist logout flag:', storageError);
+        }
+
+        window.location.href = 'login.html';
     } catch (error) {
         showAlert('Error signing out: ' + error.message, 'danger');
+        isSigningOut = false;
     }
 }
 
@@ -380,11 +473,11 @@ async function loadItems() {
         showLoading(true);
         const snapshot = await itemsCollection.orderBy('createdAt', 'desc').get();
         const fetchedItems = [];
-        
+
         snapshot.forEach(doc => {
             fetchedItems.push(mapDocToPublicListingItem(doc));
         });
-        
+
         items = fetchedItems.filter(item => !isResolvedStatus(item.status));
         displayItems(items);
         showLoading(false);
@@ -402,11 +495,11 @@ async function loadUserItems() {
         showAuthRequired();
         return;
     }
-    
+
     try {
         showLoading(true);
         console.log('Loading items for user:', currentUser.uid);
-        
+
         // Try to load items with proper error handling
         let snapshot;
         try {
@@ -421,27 +514,97 @@ async function loadUserItems() {
                 .where('userId', '==', currentUser.uid)
                 .get();
         }
-        
+
         const userItems = [];
         snapshot.forEach(doc => {
             const itemData = mapDocToPublicListingItem(doc);
             console.log('Processing item:', doc.id, itemData);
             userItems.push(itemData);
         });
-        
+
         items = userItems.filter(item => !isResolvedStatus(item.status));
         console.log('Loaded user items:', items.length, items);
         displayItems(items);
         showLoading(false);
-        
     } catch (error) {
         console.error('Error loading user items:', error);
         showAlert('Error loading your items: ' + error.message, 'danger');
         showLoading(false);
-        
+
         // Show empty state on error
         displayItems([]);
     }
+}
+
+async function loadMyClaims() {
+    if (!currentUser) return;
+    const container = document.getElementById('myClaimsContainer');
+    const spinner = document.getElementById('claimsLoadingSpinner');
+    const noClaimsMessage = document.getElementById('noClaimsMessage');
+    if (!container) return;
+    try {
+        if (spinner) spinner.style.display = 'block';
+        if (noClaimsMessage) noClaimsMessage.style.display = 'none';
+        const snapshot = await db.collection('claims')
+            .where('userId', '==', currentUser.uid)
+            .orderBy('createdAt', 'desc')
+            .get();
+        const claims = [];
+        snapshot.forEach(doc => claims.push({ id: doc.id, ...doc.data() }));
+        displayMyClaims(claims);
+    } catch (error) {
+        console.error('Error loading claims:', error);
+        container.innerHTML = '';
+        if (noClaimsMessage) {
+            noClaimsMessage.style.display = 'block';
+            noClaimsMessage.innerHTML = '<p class="text-muted mb-0">Unable to load your claims.</p>';
+        }
+    } finally {
+        if (spinner) spinner.style.display = 'none';
+    }
+}
+
+function displayMyClaims(claims) {
+    const container = document.getElementById('myClaimsContainer');
+    const noClaimsMessage = document.getElementById('noClaimsMessage');
+    if (!container) return;
+    if (!claims || claims.length === 0) {
+        container.innerHTML = '';
+        if (noClaimsMessage) noClaimsMessage.style.display = 'block';
+        return;
+    }
+    if (noClaimsMessage) noClaimsMessage.style.display = 'none';
+    const cards = claims.map(claim => {
+        const status = (claim.status || 'pending').toLowerCase();
+        let statusLabel = 'Pending';
+        let statusClass = 'bg-secondary';
+        if (status === 'approved') { statusLabel = 'Accepted'; statusClass = 'bg-success'; }
+        else if (status === 'rejected') { statusLabel = 'Rejected'; statusClass = 'bg-danger'; }
+        let dateStr = '—';
+        if (claim.createdAt) {
+            try {
+                const ts = claim.createdAt.toDate ? claim.createdAt.toDate() : (claim.createdAt.seconds ? new Date(claim.createdAt.seconds * 1000) : null);
+                if (ts) dateStr = formatDate(ts);
+            } catch (e) {}
+        }
+        const itemName = claim.itemName || 'Unknown item';
+        const itemId = claim.itemId || '';
+        const rejectionReason = (claim.rejectionReason || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        return `
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <span class="badge ${statusClass} mb-2">${statusLabel}</span>
+                        <h6 class="card-title">${itemName}</h6>
+                        <p class="text-muted small mb-1"><i class="fas fa-calendar me-1"></i>${dateStr}</p>
+                        ${status === 'rejected' && rejectionReason ? `<p class="small text-danger mb-0">${rejectionReason}</p>` : ''}
+                        <a href="item.html?id=${encodeURIComponent(itemId)}" class="btn btn-outline-primary btn-sm mt-2">View item</a>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = cards.join('');
 }
 
 async function loadResolvedItems() {
@@ -474,7 +637,7 @@ async function loadResolvedItems() {
                 ...doc.data()
             });
         });
-        
+
         // Sort by resolution time (fallback to updatedAt, then createdAt)
         resolvedItems.sort((a, b) => {
             const aSource = a.resolvedAt || a.updatedAt || a.createdAt;
@@ -491,7 +654,8 @@ async function loadResolvedItems() {
         });
 
         updateHistorySummary(resolvedItems);
-        filterHistoryItems(document.getElementById('historyFilterSelect')?.value || 'all');
+        // History filter removed: always show all resolved/returned items
+        displayHistoryItems(resolvedItems);
         showLoading(false);
     } catch (error) {
         console.error('Error loading resolved items:', error);
@@ -516,7 +680,7 @@ async function addItem(itemData) {
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        
+
         console.log('Item added with ID:', docRef.id);
         return docRef.id;
     } catch (error) {
@@ -532,7 +696,7 @@ async function updateItem(itemId, itemData) {
             ...itemData,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        
+
         console.log('Item updated:', itemId);
     } catch (error) {
         console.error('Error updating item:', error);
@@ -576,14 +740,14 @@ async function getItem(itemId) {
 // Upload image to Firebase Storage
 async function uploadImage(file, itemId) {
     if (!file) return null;
-    
+
     try {
         const storageRef = storage.ref();
         const imageRef = storageRef.child(`item-images/${itemId}/${file.name}`);
-        
+
         const snapshot = await imageRef.put(file);
         const downloadURL = await snapshot.ref.getDownloadURL();
-        
+
         console.log('Image uploaded:', downloadURL);
         return downloadURL;
     } catch (error) {
@@ -595,7 +759,7 @@ async function uploadImage(file, itemId) {
 // Delete image from Firebase Storage
 async function deleteImage(imageUrl) {
     if (!imageUrl) return;
-    
+
     try {
         const imageRef = storage.refFromURL(imageUrl);
         await imageRef.delete();
@@ -611,16 +775,17 @@ async function deleteImage(imageUrl) {
 // =============================================================================
 
 function isResolvedStatus(status) {
-    return (status || '').toLowerCase() === 'resolved';
+    const s = (status || '').toLowerCase();
+    return s === 'resolved' || s === 'returned';
 }
 
 // Display items in the grid
 function displayItems(itemsToShow) {
     const container = document.getElementById('itemsContainer');
     const noItemsMessage = document.getElementById('noItemsMessage');
-    
+
     if (!container) return;
-    
+
     if (itemsToShow.length === 0) {
         container.innerHTML = '';
         if (noItemsMessage) {
@@ -628,9 +793,9 @@ function displayItems(itemsToShow) {
         }
         return;
     }
-    
+
     if (noItemsMessage) noItemsMessage.style.display = 'none';
-    
+
     container.innerHTML = itemsToShow.map(item => createItemCard(item)).join('');
 }
 
@@ -676,7 +841,7 @@ function createItemCard(item) {
                 date = 'Unknown date';
             }
         }
-        
+
         return `
             <div class="col-md-6 col-lg-4 mb-4">
                 <div class="card item-card h-100">
@@ -718,15 +883,15 @@ function createItemCard(item) {
 function displayHistoryItems(itemsToShow) {
     const container = document.getElementById('historyItemsContainer');
     const emptyState = document.getElementById('historyEmptyState');
-    
+
     if (!container) return;
-    
+
     if (!itemsToShow || itemsToShow.length === 0) {
         container.innerHTML = '';
         if (emptyState) emptyState.style.display = 'flex';
         return;
     }
-    
+
     if (emptyState) emptyState.style.display = 'none';
     container.innerHTML = itemsToShow.map(item => createHistoryCard(item)).join('');
 }
@@ -764,7 +929,7 @@ function createHistoryCard(item) {
     const contactLabel = contactFromEnquiry ? 'Building Enquiry' : 'Reporter';
     const contactName = contactFromEnquiry ? (item.enquiryName || 'Not provided') : (item.contactName || 'Not provided');
     const contactPhone = contactFromEnquiry ? (item.enquiryPhone || 'Not provided') : (item.reporterPhone || item.contactPhone || 'Not provided');
-    
+
     // Prefer the actual resolution time; fall back to last update / creation time
     let resolvedDate = 'Unknown date';
     const resolvedSource = item.resolvedAt || item.updatedAt || item.createdAt;
@@ -782,7 +947,7 @@ function createHistoryCard(item) {
             console.warn('Error formatting resolved date:', error);
         }
     }
-    
+
     return `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 history-card">
@@ -819,21 +984,21 @@ async function viewItem(itemId) {
 async function loadItemDetails() {
     const urlParams = new URLSearchParams(window.location.search);
     const itemId = urlParams.get('id');
-    
+
     if (!itemId) {
         showItemNotFound();
         return;
     }
-    
+
     try {
         showLoading(true);
         const item = await getItem(itemId);
-        
+
         if (!item) {
             showItemNotFound();
             return;
         }
-        
+
         displayItemDetails(item);
         showLoading(false);
     } catch (error) {
@@ -847,9 +1012,9 @@ async function loadItemDetails() {
 async function displayItemDetails(item) {
     const itemDetails = document.getElementById('itemDetails');
     const actionButtons = document.getElementById('actionButtons');
-    
+
     if (!itemDetails) return;
-    
+
     // Store current item data for editing
     currentItemData = item;
     currentItemId = item.id;
@@ -946,12 +1111,22 @@ async function displayItemDetails(item) {
             // Only show claim button if viewer is logged in and not the owner
             if (currentUser && item.userId !== currentUser.uid) {
                 claimButtonContainer.style.display = 'block';
+                const claimBtn = document.getElementById('claimBtn');
+                if (claimBtn) {
+                    const existingClaimId = `${item.id}_${currentUser.uid}`;
+                    db.collection('claims').doc(existingClaimId).get().then((snap) => {
+                        if (snap.exists) {
+                            claimBtn.disabled = true;
+                            claimBtn.textContent = 'Already claimed';
+                        }
+                    }).catch(() => {});
+                }
             } else {
                 claimButtonContainer.style.display = 'none';
             }
         }
     }
-    
+
     // Show action buttons if user owns the item
     if (currentUser && item.userId === currentUser.uid) {
         if (actionButtons) {
@@ -979,7 +1154,7 @@ async function displayItemDetails(item) {
     } else if (actionButtons) {
         actionButtons.style.display = 'none';
     }
-    
+
     itemDetails.style.display = 'block';
 }
 
@@ -1078,6 +1253,18 @@ async function handleClaimForm(event) {
         return;
     }
 
+    // One claim per user per item: block if user already claimed this item
+    const claimId = `${currentItemId}_${currentUser.uid}`;
+    try {
+        const existingClaim = await db.collection('claims').doc(claimId).get();
+        if (existingClaim.exists) {
+            showAlert('You have already submitted a claim for this item. You cannot claim it again.', 'warning');
+            return;
+        }
+    } catch (e) {
+        console.warn('Could not check existing claim:', e);
+    }
+
     const nameInput = document.getElementById('claimName');
     const phoneInput = document.getElementById('claimPhone');
     const descInput = document.getElementById('claimDescription');
@@ -1092,25 +1279,26 @@ async function handleClaimForm(event) {
         return;
     }
 
-    const claimantName = nameInput.value.trim();
-    const claimantPhone = phoneInput.value.trim();
-    const claimDescription = descInput.value.trim();
-    const lostWhere = lostWhereInput.value.trim();
+    const userName = nameInput.value.trim();
+    const userPhone = phoneInput.value.trim();
+    const proofDescription = descInput.value.trim();
+    const lostLocation = lostWhereInput.value.trim();
     const identifyingMark = markInput.value.trim();
     const billFile = billInput?.files?.[0] || null;
 
     const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
 
     try {
-        if (!claimantName || !claimantPhone || !claimDescription || !lostWhere || !identifyingMark) {
+        if (!userName || !userPhone || !proofDescription || !lostLocation || !identifyingMark) {
             throw new Error('Please fill in all required fields.');
         }
 
-        if (!phoneRegex.test(claimantPhone)) {
+        if (!phoneRegex.test(userPhone)) {
             throw new Error('Please enter a valid phone number.');
         }
 
-        // Final confirmation before submitting claim
+        // claimId already set above (duplicate check)
+        // Final confirmation
         const confirmed = window.confirm('Submit this claim for admin review? You will need to show proof of ownership when you collect the item.');
         if (!confirmed) {
             return;
@@ -1119,38 +1307,62 @@ async function handleClaimForm(event) {
         submitBtn.disabled = true;
         if (spinner) spinner.style.display = 'inline-block';
 
-        let billImageUrl = null;
+        let billImageURL = null;
 
         if (billFile) {
             try {
                 const storageRef = storage.ref();
-                const billRef = storageRef.child(`claim-bills/${currentItemId}/${currentUser.uid}/${Date.now()}-${billFile.name}`);
+                // Store in claim-proofs/{claimId}/{filename}
+                const billRef = storageRef.child(`claim-proofs/${claimId}/${Date.now()}-${billFile.name}`);
                 const snapshot = await billRef.put(billFile);
-                billImageUrl = await snapshot.ref.getDownloadURL();
+                billImageURL = await snapshot.ref.getDownloadURL();
             } catch (uploadError) {
                 console.error('Error uploading bill image:', uploadError);
-                // Continue without bill image
+                // Continue without bill image or fail? User request said "optional string", so continue.
             }
         }
 
+        // Ensure we have item data (especially image)
+        if (currentItemId && (!currentItemData || !currentItemData.imageUrl)) {
+            try {
+                console.log('Refetching item data for claim submission...');
+                const itemDoc = await itemsCollection.doc(currentItemId).get();
+                if (itemDoc.exists) {
+                    const fetchedData = itemDoc.data();
+                    currentItemData = { ...currentItemData, ...fetchedData };
+                    // Normalize image URL
+                    currentItemData.imageUrl = fetchedData.imageUrl || fetchedData.photoURL || fetchedData.imageURL || null;
+                }
+            } catch (e) {
+                console.error('Error fetching item data for claim:', e);
+            }
+        }
+
+        const itemName = currentItemData?.itemName || currentItemData?.title || 'Unknown Item';
+        const itemImageRaw = currentItemData?.imageUrl || currentItemData?.photoURL || currentItemData?.imageURL || null;
+
         const claimData = {
             itemId: currentItemId,
-            claimantId: currentUser.uid,
-            claimantEmail: currentUser.email || null,
-            claimantName,
-            claimantPhone,
-            claimDescription,
-            lostWhere,
-            identifyingMark,
-            billImageUrl,
+            itemName: itemName,
+            itemImage: itemImageRaw,
+            userId: currentUser.uid,
+            userName: userName,
+            userPhone: userPhone,
+            proofDescription: proofDescription,
+            identifyingMark: identifyingMark,
+            lostLocation: lostLocation,
+            billImageURL: billImageURL,
             status: 'pending',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            reviewedAt: null,
+            reviewedBy: null
         };
 
-        await itemsCollection.doc(currentItemId).collection('claims').add(claimData);
+        // Save to root 'claims' collection with composite ID
+        await db.collection('claims').doc(claimId).set(claimData);
 
-        showAlert('Your claim has been submitted and is pending admin review.', 'success');
+        showAlert('Claim Submitted! Your claim is pending admin review.', 'success');
 
         if (billInput) billInput.value = '';
         descInput.value = '';
@@ -1162,6 +1374,14 @@ async function handleClaimForm(event) {
         if (claimModal) {
             claimModal.hide();
         }
+
+        // Disable claim button? The user request said "Disable claim button".
+        const claimBtn = document.getElementById('claimBtn');
+        if (claimBtn) {
+            claimBtn.disabled = true;
+            claimBtn.textContent = 'Claim Submitted';
+        }
+
     } catch (error) {
         console.error('Error submitting claim:', error);
         showAlert('Error submitting claim: ' + error.message, 'danger');
@@ -1175,7 +1395,7 @@ async function handleClaimForm(event) {
 function showItemNotFound() {
     const itemNotFound = document.getElementById('itemNotFound');
     const itemDetails = document.getElementById('itemDetails');
-    
+
     if (itemNotFound) itemNotFound.style.display = 'block';
     if (itemDetails) itemDetails.style.display = 'none';
 }
@@ -1191,7 +1411,7 @@ function showLoading(show) {
 // Show alert message (used as lightweight toast)
 function showAlert(message, type = 'info') {
     const alertContainer = document.getElementById('alertContainer') || createAlertContainer();
-    
+
     const alertId = 'alert-' + Date.now();
     const alertHTML = `
         <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show alert-toast" role="alert">
@@ -1199,7 +1419,7 @@ function showAlert(message, type = 'info') {
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `;
-    
+
     alertContainer.insertAdjacentHTML('beforeend', alertHTML);
 
     // Scroll newest alert into view so users always see feedback
@@ -1211,7 +1431,7 @@ function showAlert(message, type = 'info') {
     } catch (e) {
         // Ignore scroll issues – alert is still visible in most layouts
     }
-    
+
     // Auto-dismiss after 5 seconds
     setTimeout(() => {
         const alert = document.getElementById(alertId);
@@ -1250,20 +1470,20 @@ function formatDate(date) {
 // Handle report form submission
 async function handleReportForm(event) {
     event.preventDefault();
-    
+
     if (!currentUser) {
         showAlert('Please login to report an item.', 'warning');
         return;
     }
-    
+
     const submitBtn = document.getElementById('submitBtn');
     const submitSpinner = document.getElementById('submitSpinner');
-    
+
     try {
         // Show loading state (only if button exists)
         if (submitBtn) submitBtn.disabled = true;
         if (submitSpinner) submitSpinner.style.display = 'inline-block';
-        
+
         // Get form data
         const formData = {
             title: document.getElementById('itemTitle').value.trim(),
@@ -1294,7 +1514,7 @@ async function handleReportForm(event) {
         if (!formData.enquiryName || !formData.enquiryPhone) {
             throw new Error('Please provide the building enquiry desk name and phone number.');
         }
-        
+
         // Validate phone number format (basic validation)
         const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
         if (!phoneRegex.test(formData.contactPhone)) {
@@ -1304,24 +1524,24 @@ async function handleReportForm(event) {
         if (!phoneRegex.test(formData.enquiryPhone)) {
             throw new Error('Please enter a valid enquiry phone number.');
         }
-        
+
         // Add item to Firestore first to get ID
         const itemId = await addItem(formData);
-        
+
         // Upload image if provided
         const imageFile = document.getElementById('itemImage').files[0];
         if (imageFile) {
             const imageUrl = await uploadImage(imageFile, itemId);
             await updateItem(itemId, { imageUrl });
         }
-        
+
         // Show success message
         const successModal = new bootstrap.Modal(document.getElementById('successModal'));
         successModal.show();
-        
+
         // Clear form
         clearForm();
-        
+
     } catch (error) {
         console.error('Error submitting form:', error);
         showAlert('Error submitting form: ' + error.message, 'danger');
@@ -1349,10 +1569,10 @@ function handleImagePreview(event) {
     const file = event.target.files[0];
     const preview = document.getElementById('imagePreview');
     const previewImg = document.getElementById('previewImg');
-    
+
     if (file) {
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function (e) {
             previewImg.src = e.target.result;
             preview.style.display = 'block';
         };
@@ -1365,26 +1585,26 @@ function handleImagePreview(event) {
 // Handle login form submission
 async function handleLoginForm(event) {
     event.preventDefault();
-    
+
     const emailEl = document.getElementById('loginEmail');
     const passwordEl = document.getElementById('loginPassword');
     const loginBtn = document.getElementById('loginBtn');
     const loginSpinner = document.getElementById('loginSpinner');
     if (!emailEl || !passwordEl) return;
-    
+
     const email = emailEl.value.trim();
     const password = passwordEl.value;
-    
+
     try {
         if (loginBtn) { loginBtn.disabled = true; }
         if (loginSpinner) { loginSpinner.style.display = 'inline-block'; }
-        
+
         await signIn(email, password);
-        
+
         setTimeout(() => {
             window.location.href = 'index.html';
         }, 1000);
-        
+
     } catch (error) {
         // Error already shown in signIn/handleAuthError
     } finally {
@@ -1396,7 +1616,7 @@ async function handleLoginForm(event) {
 // Handle signup form submission
 async function handleSignupForm(event) {
     event.preventDefault();
-    
+
     const emailEl = document.getElementById('signupEmail');
     const passwordEl = document.getElementById('signupPassword');
     const confirmEl = document.getElementById('confirmPassword');
@@ -1404,12 +1624,12 @@ async function handleSignupForm(event) {
     const signupSpinner = document.getElementById('signupSpinner');
     const nameEl = document.getElementById('signupName');
     if (!emailEl || !passwordEl || !confirmEl || !nameEl) return;
-    
+
     const fullName = nameEl.value.trim();
     const email = emailEl.value.trim();
     const password = passwordEl.value;
     const confirmPassword = confirmEl.value;
-    
+
     try {
         if (!fullName) {
             showAlert('Please enter your full name.', 'danger');
@@ -1420,10 +1640,10 @@ async function handleSignupForm(event) {
             showAlert('Passwords do not match.', 'danger');
             return;
         }
-        
+
         if (signupBtn) { signupBtn.disabled = true; }
         if (signupSpinner) { signupSpinner.style.display = 'inline-block'; }
-        
+
         const user = await signUp(email, password);
 
         // Store the display name on the Firebase Auth profile for later use
@@ -1434,11 +1654,11 @@ async function handleSignupForm(event) {
                 console.warn('Failed to update display name:', profileError);
             }
         }
-        
+
         setTimeout(() => {
             window.location.href = 'index.html';
         }, 1000);
-        
+
     } catch (error) {
         // Error already shown in signUp/handleAuthError
     } finally {
@@ -1450,13 +1670,13 @@ async function handleSignupForm(event) {
 // Handle Google sign-in
 async function handleGoogleSignIn() {
     const googleBtn = document.getElementById('googleSignInBtn');
-    
+
     try {
         if (googleBtn) {
             googleBtn.disabled = true;
             googleBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Signing in with Google...';
         }
-        
+
         const user = await signInWithGoogle();
         // If popup succeeded (user returned), redirect. If redirect was used, page will reload.
         if (user) {
@@ -1464,7 +1684,7 @@ async function handleGoogleSignIn() {
                 window.location.href = 'index.html';
             }, 1000);
         }
-        
+
     } catch (error) {
         // Error shown in signInWithGoogle/handleAuthError
     } finally {
@@ -1484,19 +1704,19 @@ function filterItems() {
     const searchTerm = document.getElementById('searchInput')?.value.toLowerCase().trim() || '';
     const statusFilter = document.getElementById('statusFilter')?.value || '';
     const categoryFilter = document.getElementById('categoryFilter')?.value || '';
-    
+
     let filteredItems = items;
-    
+
     // Filter by search term
     if (searchTerm) {
-        filteredItems = filteredItems.filter(item => 
+        filteredItems = filteredItems.filter(item =>
             (item.itemName && item.itemName.toLowerCase().includes(searchTerm)) ||
             (item.category && item.category.toLowerCase().includes(searchTerm)) ||
             (item.location && item.location.toLowerCase().includes(searchTerm)) ||
             (item.description && item.description.toLowerCase().includes(searchTerm))
         );
     }
-    
+
     // Filter by status
     if (statusFilter) {
         filteredItems = filteredItems.filter(item => item.status === statusFilter);
@@ -1506,7 +1726,7 @@ function filterItems() {
     if (categoryFilter) {
         filteredItems = filteredItems.filter(item => item.category === categoryFilter);
     }
-    
+
     displayItems(filteredItems);
 }
 
@@ -1517,7 +1737,7 @@ function filterItems() {
 // Open edit modal and populate with current item data
 function openEditModal(item) {
     console.log('Opening edit modal for item:', item);
-    
+
     try {
         // Populate form fields with current item data
         document.getElementById('editItemTitle').value = item.title || '';
@@ -1528,15 +1748,15 @@ function openEditModal(item) {
         document.getElementById('editItemDate').value = item.date || '';
         document.getElementById('editContactPhone').value = item.contactPhone || '';
         document.getElementById('editContactName').value = item.contactName || '';
-        
+
         // Clear image preview
         document.getElementById('editImagePreview').style.display = 'none';
         document.getElementById('editItemImage').value = '';
-        
+
         // Show modal
         const editModal = new bootstrap.Modal(document.getElementById('editModal'));
         editModal.show();
-        
+
         console.log('Edit modal opened successfully');
     } catch (error) {
         console.error('Error opening edit modal:', error);
@@ -1550,15 +1770,15 @@ async function handleEditForm() {
         showAlert('Please login to edit an item.', 'warning');
         return;
     }
-    
+
     const saveBtn = document.getElementById('saveEditBtn');
     const editSpinner = document.getElementById('editSpinner');
-    
+
     try {
         // Show loading state
         saveBtn.disabled = true;
         editSpinner.style.display = 'inline-block';
-        
+
         // Get form data
         const formData = {
             title: document.getElementById('editItemTitle').value.trim(),
@@ -1575,35 +1795,35 @@ async function handleEditForm() {
         if (!formData.title || !formData.description || !formData.location || !formData.status || !formData.date || !formData.contactPhone || !formData.contactName) {
             throw new Error('Please fill in all required fields.');
         }
-        
+
         // Validate phone number format
         const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
         if (!phoneRegex.test(formData.contactPhone)) {
             throw new Error('Please enter a valid phone number.');
         }
-        
+
         formData.reporterPhone = formData.contactPhone;
-        
+
         // Update item in Firestore
         await updateItem(currentItemId, formData);
-        
+
         // Upload new image if provided
         const imageFile = document.getElementById('editItemImage').files[0];
         if (imageFile) {
             const imageUrl = await uploadImage(imageFile, currentItemId);
             await updateItem(currentItemId, { imageUrl });
         }
-        
+
         // Close modal
         const editModal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
         editModal.hide();
-        
+
         // Show success message
         showAlert('Item updated successfully!', 'success');
-        
+
         // Reload item details
         loadItemDetails();
-        
+
     } catch (error) {
         console.error('Error updating item:', error);
         showAlert('Error updating item: ' + error.message, 'danger');
@@ -1732,88 +1952,15 @@ function openBuildingEnquiryModal() {
     modal.show();
 }
 
-async function handleBuildingEnquirySubmit() {
-    if (!currentUser || !currentItemId) {
-        showAlert('You must be logged in to submit a building enquiry.', 'warning');
-        return;
-    }
-
-    const role = await getCurrentUserRole();
-    if (role === 'admin') {
-        showAlert('Admins do not need to submit building enquiries.', 'info');
-        return;
-    }
-
-    const buildingNameEl = document.getElementById('buildingName');
-    const floorEl = document.getElementById('buildingFloor');
-    const roomEl = document.getElementById('buildingRoom');
-    const notesEl = document.getElementById('buildingNotes');
-    const submitBtn = document.getElementById('submitBuildingEnquiryBtn');
-    const spinner = document.getElementById('buildingEnquirySpinner');
-
-    if (!buildingNameEl || !floorEl || !roomEl || !submitBtn) {
-        showAlert('Building enquiry form is not available. Please reload the page.', 'danger');
-        return;
-    }
-
-    const buildingName = buildingNameEl.value.trim();
-    const floor = floorEl.value.trim();
-    const roomNumber = roomEl.value.trim();
-    const additionalNotes = (notesEl?.value || '').trim();
-
-    try {
-        if (!buildingName || !floor || !roomNumber) {
-            throw new Error('Please fill in all required building enquiry fields.');
-        }
-
-        submitBtn.disabled = true;
-        if (spinner) spinner.style.display = 'inline-block';
-
-        const enquiryData = {
-            itemId: currentItemId,
-            buildingName,
-            floor,
-            roomNumber,
-            additionalNotes,
-            submittedBy: currentUser.uid,
-            submittedEmail: currentUser.email || null,
-            status: 'pending',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-
-        await itemsCollection.doc(currentItemId).collection('building_enquiries').add(enquiryData);
-
-        showAlert('Building enquiry has been submitted to the admin.', 'success');
-
-        buildingNameEl.value = '';
-        floorEl.value = '';
-        roomEl.value = '';
-        if (notesEl) notesEl.value = '';
-
-        const modalEl = document.getElementById('buildingEnquiryModal');
-        const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
-        if (modal) {
-            modal.hide();
-        }
-    } catch (error) {
-        console.error('Error submitting building enquiry:', error);
-        showAlert('Error submitting building enquiry: ' + error.message, 'danger');
-    } finally {
-        submitBtn.disabled = false;
-        if (spinner) spinner.style.display = 'none';
-    }
-}
-
 // Handle edit image preview
 function handleEditImagePreview(event) {
     const file = event.target.files[0];
     const preview = document.getElementById('editImagePreview');
     const previewImg = document.getElementById('editPreviewImg');
-    
+
     if (file) {
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function (e) {
             previewImg.src = e.target.result;
             preview.style.display = 'block';
         };
@@ -1831,7 +1978,7 @@ function handleEditImagePreview(event) {
 async function deleteItemWithConfirmation(itemId) {
     const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
     deleteModal.show();
-    
+
     // Set up confirmation handler
     const confirmBtn = document.getElementById('confirmDeleteBtn');
     confirmBtn.onclick = async () => {
@@ -1841,13 +1988,13 @@ async function deleteItemWithConfirmation(itemId) {
             if (item && item.imageUrl) {
                 await deleteImage(item.imageUrl);
             }
-            
+
             // Delete item from Firestore
             await deleteItem(itemId);
-            
+
             deleteModal.hide();
             showAlert('Item deleted successfully!', 'success');
-            
+
             // Reload appropriate page
             const currentPage = window.location.pathname.split('/').pop();
             if (currentPage === 'myitems.html') {
@@ -1859,7 +2006,7 @@ async function deleteItemWithConfirmation(itemId) {
             } else {
                 loadItems();
             }
-            
+
         } catch (error) {
             console.error('Error deleting item:', error);
             showAlert('Error deleting item: ' + error.message, 'danger');
@@ -1874,10 +2021,10 @@ async function deleteItemWithConfirmation(itemId) {
 // Initialize page based on current URL
 function initializePage() {
     const currentPage = window.location.pathname.split('/').pop();
-    
+
     // Set up common event listeners
     setupCommonEventListeners();
-    
+
     // Page-specific initialization
     switch (currentPage) {
         case 'index.html':
@@ -1890,6 +2037,14 @@ function initializePage() {
                 loadUserItems();
             } else {
                 console.log('No user logged in, showing auth required');
+                showAuthRequired();
+            }
+            break;
+        case 'myclaims.html':
+            if (currentUser) {
+                hideAuthRequired();
+                loadMyClaims();
+            } else {
                 showAuthRequired();
             }
             break;
@@ -1908,7 +2063,16 @@ function initializePage() {
             loadResolvedItems();
             break;
         case 'login.html':
-            // Forms already set up in HTML
+            // Show one-time logout success message if user was redirected here after logging out
+            try {
+                const logoutFlag = window.sessionStorage.getItem('lf_logout_success');
+                if (logoutFlag) {
+                    showAlert('You have been logged out successfully.', 'success');
+                    window.sessionStorage.removeItem('lf_logout_success');
+                }
+            } catch (e) {
+                // Ignore storage issues – login still works without the toast
+            }
             break;
     }
 }
@@ -1920,10 +2084,16 @@ function setupCommonEventListeners() {
     if (logoutLink) {
         logoutLink.addEventListener('click', (e) => {
             e.preventDefault();
+            // Prevent multiple rapid logout attempts
+            if (isSigningOut) {
+                return;
+            }
+            logoutLink.classList.add('disabled');
+            logoutLink.setAttribute('aria-disabled', 'true');
             signOut();
         });
     }
-    
+
     // Search and filter inputs
     const searchInput = document.getElementById('searchInput');
     const statusFilter = document.getElementById('statusFilter');
@@ -1943,7 +2113,7 @@ function setupCommonEventListeners() {
             filterHistoryItems(event.target.value);
         });
     }
-    
+
     // Report form
     const reportForm = document.getElementById('reportForm');
     if (reportForm) {
@@ -1955,25 +2125,25 @@ function setupCommonEventListeners() {
     if (imageInput) {
         imageInput.addEventListener('change', handleImagePreview);
     }
-    
+
     // Login form
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
         loginForm.addEventListener('submit', handleLoginForm);
     }
-    
+
     // Signup form
     const signupForm = document.getElementById('signupForm');
     if (signupForm) {
         signupForm.addEventListener('submit', handleSignupForm);
     }
-    
+
     // Google sign-in button
     const googleSignInBtn = document.getElementById('googleSignInBtn');
     if (googleSignInBtn) {
         googleSignInBtn.addEventListener('click', handleGoogleSignIn);
     }
-    
+
     // Edit button
     const editBtn = document.getElementById('editBtn');
     if (editBtn) {
@@ -1990,19 +2160,19 @@ function setupCommonEventListeners() {
     } else {
         console.error('Edit button not found in DOM');
     }
-    
+
     // Save edit button
     const saveEditBtn = document.getElementById('saveEditBtn');
     if (saveEditBtn) {
         saveEditBtn.addEventListener('click', handleEditForm);
     }
-    
+
     // Edit image preview
     const editImageInput = document.getElementById('editItemImage');
     if (editImageInput) {
         editImageInput.addEventListener('change', handleEditImagePreview);
     }
-    
+
     const actionEnquiryToggle = document.getElementById('actionGivenToEnquiry');
     if (actionEnquiryToggle) {
         actionEnquiryToggle.addEventListener('change', (event) => {
@@ -2019,12 +2189,12 @@ function setupCommonEventListeners() {
     if (openBuildingEnquiryBtn) {
         openBuildingEnquiryBtn.addEventListener('click', openBuildingEnquiryModal);
     }
-    
+
     const resolveBtn = document.getElementById('resolveBtn');
     if (resolveBtn) {
         resolveBtn.addEventListener('click', markItemResolved);
     }
-    
+
     // Delete buttons
     const deleteBtn = document.getElementById('deleteBtn');
     if (deleteBtn) {
@@ -2081,12 +2251,12 @@ window.openEditModal = openEditModal;
 window.handleEditForm = handleEditForm;
 
 // Test function for debugging
-window.testEdit = function() {
+window.testEdit = function () {
     console.log('Testing edit functionality...');
     console.log('Current user:', currentUser);
     console.log('Current item data:', currentItemData);
     console.log('Current item ID:', currentItemId);
-    
+
     if (currentItemData) {
         console.log('Opening edit modal with test data');
         openEditModal(currentItemData);
