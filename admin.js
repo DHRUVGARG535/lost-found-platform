@@ -126,16 +126,16 @@ async function adminLoadItems() {
 
         rows.push(`
             <tr>
-                <td class="admin-item-thumb-cell">${photoCellContent}</td>
-                <td>
+                <td class="admin-item-thumb-cell" data-label="Photo">${photoCellContent}</td>
+                <td data-label="Item">
                     <div class="fw-semibold">${escapeHtml(itemName)}</div>
                     <div class="text-muted small" title="ID: ${escapeHtml(doc.id)}"><i class="fas fa-map-marker-alt me-1"></i> ${escapeHtml(location)}</div>
                 </td>
-                <td>${escapeHtml(category)}</td>
-                <td><span class="badge ${statusClass} text-uppercase">${escapeHtml(status)}</span></td>
-                <td class="text-muted small">${escapeHtml(createdAt)}</td>
-                <td class="text-muted small" title="ID: ${escapeHtml(finderId)}">${escapeHtml(finderName)}</td>
-                <td class="text-end">
+                <td data-label="Category">${escapeHtml(category)}</td>
+                <td data-label="Status"><span class="badge ${statusClass} text-uppercase">${escapeHtml(status)}</span></td>
+                <td class="text-muted small" data-label="Created">${escapeHtml(createdAt)}</td>
+                <td class="text-muted small" title="ID: ${escapeHtml(finderId)}" data-label="Finder">${escapeHtml(finderName)}</td>
+                <td class="text-end" data-label="Actions">
                     <div class="d-flex justify-content-end gap-2 admin-item-actions">
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="adminOpenItemDetails('${doc.id}')">
                             View
@@ -193,16 +193,16 @@ async function adminLoadClaims() {
 
         rows.push(`
             <tr>
-                <td class="admin-item-thumb-cell">${photoCellContent}</td>
-                <td>
+                <td class="admin-item-thumb-cell" data-label="Photo">${photoCellContent}</td>
+                <td data-label="Item / Location">
                     <div class="fw-semibold">${escapeHtml(d.itemName || 'Unknown Item')}</div>
                     <div class="text-muted small" title="Item ID: ${escapeHtml(itemId)}"><i class="fas fa-map-marker-alt me-1"></i> ${escapeHtml(d.lostLocation || 'Location not provided')}</div>
                 </td>
-                <td>${escapeHtml(claimant)}</td>
-                <td class="text-muted small">${escapeHtml(phone)}</td>
-                <td><span class="badge ${status === 'approved' ? 'bg-success' : status === 'rejected' ? 'bg-danger' : 'bg-warning'} text-uppercase">${escapeHtml(status)}</span></td>
-                <td class="text-muted small">${escapeHtml(submittedAt)}</td>
-                <td class="text-end">${actionsHtml}</td>
+                <td data-label="Claimant">${escapeHtml(claimant)}</td>
+                <td class="text-muted small" data-label="Phone">${escapeHtml(phone)}</td>
+                <td data-label="Status"><span class="badge ${status === 'approved' ? 'bg-success' : status === 'rejected' ? 'bg-danger' : 'bg-warning'} text-uppercase">${escapeHtml(status)}</span></td>
+                <td class="text-muted small" data-label="Submitted">${escapeHtml(submittedAt)}</td>
+                <td class="text-end" data-label="Actions">${actionsHtml}</td>
             </tr>
         `);
     });

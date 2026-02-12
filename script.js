@@ -90,7 +90,11 @@ const ITEM_CATEGORIES = [
 ];
 
 // Lightweight debounce helper (for search inputs etc.)
-function debounce(fn, delay = 250) {
+// Use slightly longer delay on mobile to reduce lag while typing
+function debounce(fn, delay) {
+    if (delay === undefined) {
+        delay = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 400 : 250;
+    }
     let timeoutId;
     return (...args) => {
         if (timeoutId) {
@@ -549,8 +553,25 @@ async function loadMyClaims() {
             .where('userId', '==', currentUser.uid)
             .orderBy('createdAt', 'desc')
             .get();
-        const claims = [];
-        snapshot.forEach(doc => claims.push({ id: doc.id, ...doc.data() }));
+        const claimsPromises = snapshot.docs.map(async (doc) => {
+            const claim = { id: doc.id, ...doc.data() };
+            if (claim.status === 'approved' && claim.itemId) {
+                try {
+                    const itemDoc = await itemsCollection.doc(claim.itemId).get();
+                    if (itemDoc.exists) {
+                        const itemData = itemDoc.data();
+                        claim.enquiryName = itemData.enquiryName;
+                        claim.enquiryPhone = itemData.enquiryPhone;
+                        // Also fetch location if needed, though usually enquiry name is enough
+                    }
+                } catch (e) {
+                    console.error('Error fetching item details for claim:', e);
+                }
+            }
+            return claim;
+        });
+
+        const claims = await Promise.all(claimsPromises);
         displayMyClaims(claims);
     } catch (error) {
         console.error('Error loading claims:', error);
@@ -574,7 +595,7 @@ function displayMyClaims(claims) {
         return;
     }
     if (noClaimsMessage) noClaimsMessage.style.display = 'none';
-    const cards = claims.map(claim => {
+    const html = claims.map(claim => {
         const status = (claim.status || 'pending').toLowerCase();
         let statusLabel = 'Pending';
         let statusClass = 'bg-secondary';
@@ -585,7 +606,7 @@ function displayMyClaims(claims) {
             try {
                 const ts = claim.createdAt.toDate ? claim.createdAt.toDate() : (claim.createdAt.seconds ? new Date(claim.createdAt.seconds * 1000) : null);
                 if (ts) dateStr = formatDate(ts);
-            } catch (e) {}
+            } catch (e) { }
         }
         const itemName = claim.itemName || 'Unknown item';
         const itemId = claim.itemId || '';
@@ -598,13 +619,24 @@ function displayMyClaims(claims) {
                         <h6 class="card-title">${itemName}</h6>
                         <p class="text-muted small mb-1"><i class="fas fa-calendar me-1"></i>${dateStr}</p>
                         ${status === 'rejected' && rejectionReason ? `<p class="small text-danger mb-0">${rejectionReason}</p>` : ''}
+                        ${status === 'approved' ? `
+                            <div class="mt-2 p-2 bg-light rounded border border-success bg-opacity-10">
+                                <p class="mb-1 small text-success"><strong><i class="fas fa-check-circle me-1"></i>Ready for Collection</strong></p>
+                                <p class="mb-1 small"><strong>Place:</strong> ${claim.enquiryName || 'Enquiry Desk'}</p>
+                                <p class="mb-0 small"><strong>Phone:</strong> ${claim.enquiryPhone || 'Not available'}</p>
+                            </div>
+                        ` : ''}
                         <a href="item.html?id=${encodeURIComponent(itemId)}" class="btn btn-outline-primary btn-sm mt-2">View item</a>
                     </div>
                 </div>
             </div>
         `;
-    });
-    container.innerHTML = cards.join('');
+    }).join('');
+    if (typeof requestAnimationFrame !== 'function') {
+        container.innerHTML = html;
+        return;
+    }
+    requestAnimationFrame(() => { container.innerHTML = html; });
 }
 
 async function loadResolvedItems() {
@@ -779,24 +811,30 @@ function isResolvedStatus(status) {
     return s === 'resolved' || s === 'returned';
 }
 
-// Display items in the grid
+// Display items in the grid (uses rAF to avoid blocking main thread and reduce mobile lag)
 function displayItems(itemsToShow) {
     const container = document.getElementById('itemsContainer');
     const noItemsMessage = document.getElementById('noItemsMessage');
 
     if (!container) return;
 
-    if (itemsToShow.length === 0) {
-        container.innerHTML = '';
-        if (noItemsMessage) {
-            noItemsMessage.style.display = 'flex';
+    function paint() {
+        if (itemsToShow.length === 0) {
+            container.innerHTML = '';
+            if (noItemsMessage) {
+                noItemsMessage.style.display = 'flex';
+            }
+            return;
         }
-        return;
+        if (noItemsMessage) noItemsMessage.style.display = 'none';
+        container.innerHTML = itemsToShow.map(item => createItemCard(item)).join('');
     }
 
-    if (noItemsMessage) noItemsMessage.style.display = 'none';
-
-    container.innerHTML = itemsToShow.map(item => createItemCard(item)).join('');
+    if (typeof requestAnimationFrame !== 'function') {
+        paint();
+        return;
+    }
+    requestAnimationFrame(paint);
 }
 
 // Create item card HTML
@@ -886,14 +924,20 @@ function displayHistoryItems(itemsToShow) {
 
     if (!container) return;
 
-    if (!itemsToShow || itemsToShow.length === 0) {
-        container.innerHTML = '';
-        if (emptyState) emptyState.style.display = 'flex';
+    function paint() {
+        if (!itemsToShow || itemsToShow.length === 0) {
+            container.innerHTML = '';
+            if (emptyState) emptyState.style.display = 'flex';
+            return;
+        }
+        if (emptyState) emptyState.style.display = 'none';
+        container.innerHTML = itemsToShow.map(item => createHistoryCard(item)).join('');
+    }
+    if (typeof requestAnimationFrame !== 'function') {
+        paint();
         return;
     }
-
-    if (emptyState) emptyState.style.display = 'none';
-    container.innerHTML = itemsToShow.map(item => createHistoryCard(item)).join('');
+    requestAnimationFrame(paint);
 }
 
 function updateHistorySummary(items = []) {
@@ -1119,7 +1163,7 @@ async function displayItemDetails(item) {
                             claimBtn.disabled = true;
                             claimBtn.textContent = 'Already claimed';
                         }
-                    }).catch(() => {});
+                    }).catch(() => { });
                 }
             } else {
                 claimButtonContainer.style.display = 'none';
@@ -2097,7 +2141,8 @@ function setupCommonEventListeners() {
     // Search and filter inputs
     const searchInput = document.getElementById('searchInput');
     const statusFilter = document.getElementById('statusFilter');
-    const debouncedFilter = debounce(filterItems, 250);
+    const categoryFilterEl = document.getElementById('categoryFilter');
+    const debouncedFilter = debounce(filterItems);
 
     if (searchInput) {
         searchInput.addEventListener('input', debouncedFilter);
@@ -2105,6 +2150,9 @@ function setupCommonEventListeners() {
 
     if (statusFilter) {
         statusFilter.addEventListener('change', filterItems);
+    }
+    if (categoryFilterEl) {
+        categoryFilterEl.addEventListener('change', filterItems);
     }
 
     const historyFilterSelect = document.getElementById('historyFilterSelect');
@@ -2144,21 +2192,16 @@ function setupCommonEventListeners() {
         googleSignInBtn.addEventListener('click', handleGoogleSignIn);
     }
 
-    // Edit button
+    // Edit button (only present on item detail pages)
     const editBtn = document.getElementById('editBtn');
     if (editBtn) {
-        console.log('Edit button found, adding event listener');
         editBtn.addEventListener('click', () => {
-            console.log('Edit button clicked, currentItemData:', currentItemData);
             if (currentItemData) {
                 openEditModal(currentItemData);
             } else {
-                console.error('No current item data available');
                 showAlert('No item data available for editing', 'warning');
             }
         });
-    } else {
-        console.error('Edit button not found in DOM');
     }
 
     // Save edit button
